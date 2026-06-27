@@ -13,12 +13,17 @@
 # ─────────────────────────────────────────────────────────────
 set -e
 
+# Directorul in care se afla acest script = directorul de rulare al robotului
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 REPO_URL="${REPO_URL:-https://github.com/alinfordon/robot.git}"
 BRANCH="${BRANCH:-main}"
 SRC_DIR="${SRC_DIR:-$HOME/robot-src}"   # clona git (separata de runtime)
-APP_DIR="${APP_DIR:-$HOME}"             # /home/robot - unde ruleaza robotul
+APP_DIR="${APP_DIR:-$SCRIPT_DIR}"       # unde ruleaza robotul (langa update.sh)
 VENV="$APP_DIR/venv"
 RESTART="${RESTART:-1}"
+
+echo "Director aplicatie (APP_DIR): $APP_DIR"
 
 echo "=== ROBO_V1 Update ==="
 
