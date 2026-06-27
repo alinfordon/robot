@@ -29,6 +29,8 @@ TFT_HEIGHT = _cfg("TFT_HEIGHT", 320)
 TFT_SPI_SPEED = _cfg("TFT_SPI_SPEED", 40_000_000)
 # Pentru 240x320 (ne-patrat) st7789 accepta DOAR 0 sau 180
 TFT_ROTATION = _cfg("TFT_ROTATION", 0)
+# Index hardware CE pentru spidev (NU pinul GPIO!): 0=CE0/GPIO8, 1=CE1/GPIO7
+TFT_SPI_CS = _cfg("TFT_SPI_CS", 0)
 
 
 # Detectie dependente, fara a opri robotul daca lipsesc
@@ -89,7 +91,7 @@ class RobotDisplay:
 
                 self.disp = st7789.ST7789(
                     port=0,
-                    cs=TFT_CS,
+                    cs=TFT_SPI_CS,
                     dc=TFT_DC,
                     rst=TFT_RST,
                     backlight=TFT_BL,

@@ -65,7 +65,7 @@ def test_raw():
     try:
         disp = st7789.ST7789(
             port=0,
-            cs=config.TFT_CS,
+            cs=getattr(config, "TFT_SPI_CS", 0),
             dc=config.TFT_DC,
             rst=config.TFT_RST,
             backlight=config.TFT_BL,

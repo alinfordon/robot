@@ -65,6 +65,8 @@ TFT_WIDTH = 240
 TFT_HEIGHT = 320
 TFT_SPI_SPEED = 40_000_000
 TFT_ROTATION = 0  # 240x320: doar 0 sau 180 (st7789 nu accepta 90/270)
+# Index hardware CE pentru spidev (NU pinul GPIO!): 0=CE0/GPIO8, 1=CE1/GPIO7
+TFT_SPI_CS = 0
 
 # Audio — traducator RO<->EN (Vosk STT + Piper TTS)
 VOSK_MODEL_PATH = os.getenv(
