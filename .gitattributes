@@ -1,2 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Scripturile shell TREBUIE sa aiba LF (altfel crapa pe Linux/Pi)
+*.sh text eol=lf
+# Python si config: LF si pe Windows (workflow de copiere manuala pe Pi)
+*.py text eol=lf
+.env.example text eol=lf
