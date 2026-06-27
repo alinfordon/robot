@@ -1,0 +1,35 @@
+{
+  "name": "robo-v1-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"next dev -p 3001\" \"tsx watch --env-file=.env.local server/websocket.ts\"",
+    "dev:next": "next dev -p 3001",
+    "dev:ws": "tsx watch --env-file=.env.local server/websocket.ts",
+    "build": "next build",
+    "start": "concurrently \"next start -p 3001\" \"tsx --env-file=.env.local server/websocket.ts\"",
+    "lint": "next lint",
+    "mongo:start": "bash scripts/mongodb-start.sh",
+    "mongo:stop": "bash scripts/mongodb-stop.sh",
+    "mongo:init": "tsx scripts/mongodb-init.ts",
+    "mongo:status": "systemctl is-active mongod && mongosh --quiet robo_v1 --eval 'db.getCollectionNames()'"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@google/generative-ai": "^0.21.0",
+    "mongodb": "^7.3.0",
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/ws": "^8.5.0",
+    "concurrently": "^9.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
