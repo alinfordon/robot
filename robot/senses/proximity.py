@@ -18,13 +18,10 @@ except ImportError:
     HAS_GPIO = False
 
 SENSORS: Dict[str, Tuple[int, int]] = {
-    "front_left": (config.US_FRONT_LEFT_TRIG, config.US_FRONT_LEFT_ECHO),
-    "front_center": (config.US_FRONT_MID_TRIG, config.US_FRONT_MID_ECHO),
-    "front_right": (config.US_FRONT_RIGHT_TRIG, config.US_FRONT_RIGHT_ECHO),
+    "front": (config.US_FRONT_TRIG, config.US_FRONT_ECHO),
     "left": (config.US_LEFT_TRIG, config.US_LEFT_ECHO),
     "right": (config.US_RIGHT_TRIG, config.US_RIGHT_ECHO),
-    "back_left": (config.US_BACK_LEFT_TRIG, config.US_BACK_LEFT_ECHO),
-    "back_right": (config.US_BACK_RIGHT_TRIG, config.US_BACK_RIGHT_ECHO),
+    "back": (config.US_BACK_TRIG, config.US_BACK_ECHO),
 }
 
 
@@ -43,7 +40,7 @@ class ProximitySensors:
                 GPIO.setup(trig, GPIO.OUT)
                 GPIO.setup(echo, GPIO.IN)
                 GPIO.output(trig, GPIO.LOW)
-            logger.info("7 senzori HC-SR04 initializati")
+            logger.info("4 senzori HC-SR04 initializati")
         else:
             logger.warning("Mod simulare senzori")
 
@@ -106,12 +103,9 @@ class ProximitySensors:
         threshold = config.OBSTACLE_DISTANCE_CM
 
         if direction == "forward":
-            return all(
-                readings.get(k, 999) > threshold
-                for k in ("front_left", "front_center", "front_right")
-            )
+            return readings.get("front", 999) > threshold
         if direction == "backward":
-            return all(readings.get(k, 999) > threshold for k in ("back_left", "back_right"))
+            return readings.get("back", 999) > threshold
         if direction == "left":
             return readings.get("left", 999) > threshold
         if direction == "right":
