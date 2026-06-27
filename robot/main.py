@@ -13,6 +13,7 @@ from actuators.motors import MotorController
 from actuators.speaker import Speaker
 from brain.llm_client import ask
 from brain.router import VoiceRouter
+from brain.translator import Translator
 from comms.ws_client import RobotWSClient
 from senses.hearing import HearingSystem
 from senses.proximity import ProximitySensors
@@ -35,8 +36,6 @@ class RoboV1:
             if not config.MOCK_HARDWARE:
                 self.display = RobotDisplay()
                 self.display.show_boot()
-            else:
-                self.display = None
         except Exception as e:
             logger.warning(f"Display indisponibil: {e}")
             self.display = None
@@ -44,6 +43,7 @@ class RoboV1:
         self.vision: VisionSystem | None = None
         self.hearing: HearingSystem | None = None
         self.router: VoiceRouter | None = None
+        self.translator = Translator()
         self._chat_history: list = []
         self._running = True
 
@@ -55,14 +55,15 @@ class RoboV1:
         self.vision = VisionSystem(
             on_objects=self._on_objects,
             on_frame=self._on_frame,
+            should_stream=lambda: bool(self.ws and self.ws.connected),
         )
         self.hearing = HearingSystem(on_speech=self._on_speech)
-        self.hearing.configure(enabled=False, route="dashboard")
+        self.hearing.start()
 
         self.router = VoiceRouter(
             motor_move=self._motor_move,
             ai_handler=self._ai_handler,
-            speaker_say=self._speak,
+            speaker_say=self.speaker.say,
         )
 
         tasks = [
@@ -131,10 +132,10 @@ class RoboV1:
             return default
 
         sensors = {
-            "front": _pick("front", "front_mid", "front_center"),
+            "front": _pick("front", "front_center"),
             "left": _pick("left"),
             "right": _pick("right"),
-            "back": _pick("back", "back_left", "back_right"),
+            "back": _pick("back"),
         }
 
         uptime_s = int(self.ctx.uptime())
@@ -166,8 +167,55 @@ class RoboV1:
 
         elif msg_type == "SPEAK":
             text = payload.get("text", "")
-            lang = str(payload.get("lang", "ro"))
-            await self._speak(text, lang=lang)
+            lang = payload.get("lang", "ro")
+            self.ctx.set_state(RobotState.SPEAKING, Mood.TALKING)
+            self._send_state()
+            await self.speaker.say(text, lang=lang)
+            self.ctx.set_state(RobotState.IDLE, Mood.STANDBY)
+            self._send_state()
+
+        elif msg_type == "SET_STT_CONFIG":
+            if self.hearing:
+                self.hearing.set_config(
+                    enabled=bool(payload.get("enabled", True)),
+                    route=payload.get("route", "dashboard"),
+                    lang=payload.get("lang", self.translator.stt_lang()),
+                )
+
+        elif msg_type == "SET_TRANSLATOR":
+            self.translator.configure(
+                active=bool(payload.get("active", False)),
+                listen_lang=payload.get("listenLang", payload.get("listen_lang", "ro")),
+                speak_lang=payload.get("speakLang", payload.get("speak_lang", "en")),
+            )
+            if self.hearing:
+                self.hearing.set_config(
+                    enabled=True,
+                    route=self.translator.stt_route(),
+                    lang=self.translator.stt_lang(),
+                )
+
+        elif msg_type == "TRANSLATE_SPEAK":
+            text = payload.get("text", "")
+            source = payload.get("sourceLang", payload.get("source_lang", "ro"))
+            target = payload.get("targetLang", payload.get("target_lang", "en"))
+            translated = await self.translator.translate(text, source, target)
+            self.ctx.set_state(RobotState.SPEAKING, Mood.TALKING)
+            self._send_state()
+            await self.speaker.say(translated, lang=target)
+            if self.ws:
+                self.ws.send(
+                    "TRANSLATION",
+                    {
+                        "original": text,
+                        "translation": translated,
+                        "sourceLang": source,
+                        "targetLang": target,
+                        "spoken_on_robot": True,
+                    },
+                )
+            self.ctx.set_state(RobotState.IDLE, Mood.STANDBY)
+            self._send_state()
 
         elif msg_type == "SET_MODE":
             mode = payload.get("mode", "manual")
@@ -191,20 +239,10 @@ class RoboV1:
             self._send_state()
             await self.ws.send_async("LOG", {"level": "info", "message": "Reset complet", "module": "main"})
 
-        elif msg_type == "SET_STT_CONFIG":
-            enabled = bool(payload.get("enabled", False))
-            route = str(payload.get("route", "dashboard"))
-            lang = str(payload.get("lang", "ro"))
-            if self.hearing:
-                self.hearing.configure(enabled=enabled, route=route, lang=lang)
-            await self.ws.send_async(
-                "LOG",
-                {
-                    "level": "info",
-                    "message": f"STT: enabled={enabled}, route={route}, lang={lang}",
-                    "module": "hearing",
-                },
-            )
+        elif msg_type == "DETECTED_OBJECTS":
+            objects = payload.get("objects", [])
+            if self.vision:
+                self.vision.set_detected_objects(objects)
 
     def _motor_move(self, direction: str, speed: float):
         if direction == "stop":
@@ -227,47 +265,48 @@ class RoboV1:
             self.ws.send("DETECTED_OBJECTS", {"objects": objects})
 
     def _on_frame(self, b64: str, width: int, height: int):
-        if self.ws:
+        if self.ws and self.ws.connected:
             self.ws.send("CAMERA_FRAME", {"base64": b64, "width": width, "height": height})
 
-    def _on_speech(self, text: str):
+    def _on_speech(self, text: str, lang: str = "ro", route: str = "dashboard"):
         if self.ws:
             self.ws.send(
                 "SPEECH_RECOGNIZED",
-                {"text": text, "route": self.hearing.route if self.hearing else "local"},
+                {"text": text, "lang": lang, "route": route},
             )
-
-        if not self.hearing or self.hearing.route != "local":
-            return
-
         self.ctx.set_state(RobotState.LISTENING, Mood.LISTENING)
         self._send_state()
 
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(self._process_speech(text))
+            loop.create_task(self._process_speech(text, lang, route))
         except RuntimeError:
             pass
 
-    async def _process_speech(self, text: str):
-        if self.router:
-            await self.router.route(text)
-
-    async def _speak(self, text: str, lang: str = "ro"):
-        """TTS cu microfon oprit pe durata vorbirii."""
-        if not text.strip():
-            return
-        if self.hearing:
-            self.hearing.pause()
-        self.ctx.set_state(RobotState.SPEAKING, Mood.TALKING)
-        self._send_state()
-        try:
-            await self.speaker.say(text, lang=lang)
-        finally:
+    async def _process_speech(self, text: str, lang: str = "ro", route: str = "dashboard"):
+        if self.translator.active or route == "translator":
+            target = self.translator.output_lang(lang)
+            translated = await self.translator.translate(text, lang, target)
+            if self.ws:
+                self.ws.send(
+                    "TRANSLATION",
+                    {
+                        "original": text,
+                        "translation": translated,
+                        "sourceLang": lang,
+                        "targetLang": target,
+                        "spoken_on_robot": True,
+                    },
+                )
+            self.ctx.set_state(RobotState.SPEAKING, Mood.TALKING)
+            self._send_state()
+            await self.speaker.say(translated, lang=target)
             self.ctx.set_state(RobotState.IDLE, Mood.STANDBY)
             self._send_state()
-            if self.hearing:
-                self.hearing.resume()
+            return
+
+        if self.router:
+            await self.router.route(text)
 
     async def _ai_handler(self, text: str):
         self.ctx.set_state(RobotState.THINKING, Mood.THINKING)
@@ -301,7 +340,11 @@ class RoboV1:
                 },
             )
 
-        await self._speak(reply)
+        self.ctx.set_state(RobotState.SPEAKING, Mood.TALKING)
+        self._send_state()
+        await self.speaker.say(reply, lang="ro")
+        self.ctx.set_state(RobotState.IDLE, Mood.STANDBY)
+        self._send_state()
 
     def _send_state(self):
         if self.ws:
@@ -317,7 +360,7 @@ class RoboV1:
                     self.ctx.mood = Mood.ALERT
                     self._send_state()
 
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(config.SENSOR_INTERVAL_SEC)
 
     async def _system_monitor_loop(self):
         while self._running:

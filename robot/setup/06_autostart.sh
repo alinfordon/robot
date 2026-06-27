@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
-sudo tee /etc/systemd/system/robot.service > /dev/null << 'EOF'
+PROJECT_DIR="${ROBOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+USB_PLAYBACK_CARD="$(grep -m1 'USB-Audio' /proc/asound/cards | awk '{print $1}')"
+USB_PLAYBACK_CARD="${USB_PLAYBACK_CARD:-0}"
+sudo tee /etc/systemd/system/robot.service > /dev/null <<EOF
 [Unit]
 Description=ROBO_V1 Robot Service
 After=network.target pigpiod.service
@@ -8,9 +11,11 @@ After=network.target pigpiod.service
 [Service]
 Type=simple
 User=robot
-WorkingDirectory=/home/robot
-Environment=PATH=/home/robot/venv/bin:/usr/bin
-ExecStart=/home/robot/venv/bin/python /home/robot/main.py
+WorkingDirectory=${PROJECT_DIR}
+Environment=HOME=/home/robot
+Environment=PATH=${PROJECT_DIR}/venv/bin:/usr/bin
+Environment=ALSA_CARD=${USB_PLAYBACK_CARD}
+ExecStart=${PROJECT_DIR}/venv/bin/python ${PROJECT_DIR}/main.py
 Restart=always
 RestartSec=5
 

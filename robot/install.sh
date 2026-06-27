@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+export ROBOT_DIR="$SCRIPT_DIR"
+cd "$ROBOT_DIR"
 
 echo "=== ROBO_V1 Install ==="
 bash setup/01_system.sh

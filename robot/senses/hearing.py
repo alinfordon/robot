@@ -1,7 +1,10 @@
 import asyncio
+import audioop
 import json
 import queue
+import re
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -24,146 +27,208 @@ try:
 except ImportError:
     HAS_VOSK = False
 
+SpeechCallback = Callable[[str, str, str], None]
+
 
 class HearingSystem:
-    def __init__(self, on_speech: Optional[Callable[[str], None]] = None):
+    """Vosk STT bilingv RO/EN pentru dashboard si traducator."""
+
+    def __init__(self, on_speech: Optional[SpeechCallback] = None):
         self.on_speech = on_speech
         self._running = False
         self._thread: Optional[threading.Thread] = None
-        self.model = None
         self._audio_queue: queue.Queue = queue.Queue()
-        self.enabled = True
-        self.route = "local"  # "local" | "dashboard" | "translator"
-        self.lang = "ro"  # "ro" | "en"
-        self._paused = False
+        self._models: dict[str, Model] = {}
+        self._recognizer: Optional[KaldiRecognizer] = None
+        self._enabled = True
+        self._route = "dashboard"
+        self._lang = "ro"
+        self._lock = threading.Lock()
+        self._resample_state = None
 
-    def pause(self):
-        """Opreste procesarea STT cat timp robotul vorbeste (anti-feedback)."""
-        self._paused = True
-        self._drain_queue()
-        logger.debug("STT pe pauza (TTS activ)")
+    def set_config(
+        self,
+        enabled: bool = True,
+        route: str = "dashboard",
+        lang: str = "ro",
+    ):
+        with self._lock:
+            self._enabled = enabled
+            self._route = route
+            lang = lang if lang in ("ro", "en") else "ro"
+            if lang != self._lang:
+                self._lang = lang
+                self._recognizer = self._make_recognizer(lang)
+        logger.info("STT config: enabled=%s route=%s lang=%s", enabled, route, lang)
 
-    def resume(self):
-        if not self._paused:
-            return
-        self._paused = False
-        self._drain_queue()
-        logger.debug("STT reluat")
-
-    def _drain_queue(self):
-        while True:
-            try:
-                self._audio_queue.get_nowait()
-            except queue.Empty:
-                break
-
-    def configure(self, enabled: bool, route: str = "local", lang: str = "ro"):
-        route = route if route in ("local", "dashboard", "translator") else "local"
-        lang = lang if lang in ("ro", "en", "auto") else "ro"
-        lang_changed = lang != self.lang
-        route_changed = route != self.route
-
-        if route_changed:
-            self.route = route
-            logger.info(f"STT route: {route}")
-
-        if lang_changed:
-            self.lang = lang
-            logger.info(f"STT lang: {lang}")
-
-        if enabled == self.enabled and not lang_changed and self._thread and self._thread.is_alive():
-            return
-
-        self.enabled = enabled
-        if enabled:
-            if lang_changed and self._thread and self._thread.is_alive():
-                self.stop()
-            if not self._thread or not self._thread.is_alive():
-                self.start()
-        else:
-            self.stop()
-            logger.info("STT oprit")
-
-    def _load_model(self) -> bool:
+    def _load_models(self) -> bool:
         if not HAS_VOSK:
             logger.warning("Vosk indisponibil")
             return False
-        if self.lang == "en" and config.VOSK_MODEL_PATH_EN:
-            model_path = Path(config.VOSK_MODEL_PATH_EN)
-            if not model_path.exists():
-                logger.warning(f"Model Vosk EN negasit: {model_path}, folosesc RO")
-                model_path = Path(config.VOSK_MODEL_PATH)
-        else:
-            model_path = Path(config.VOSK_MODEL_PATH)
-        if not model_path.exists():
-            logger.warning(f"Model Vosk negasit: {model_path}")
-            return config.MOCK_HARDWARE
-        self.model = Model(str(model_path))
-        logger.info(f"Model Vosk incarcat ({self.lang}): {model_path}")
-        return True
+
+        paths = {
+            "ro": Path(config.VOSK_MODEL_PATH),
+            "en": Path(config.VOSK_MODEL_PATH_EN),
+        }
+        loaded = False
+        for lang, path in paths.items():
+            if not path.exists():
+                logger.warning("Model Vosk %s negasit: %s", lang, path)
+                continue
+            self._models[lang] = Model(str(path))
+            logger.info("Model Vosk %s incarcat", lang)
+            loaded = True
+
+        if loaded:
+            self._recognizer = self._make_recognizer(self._lang)
+        return loaded
+
+    def _make_recognizer(self, lang: str) -> Optional[KaldiRecognizer]:
+        model = self._models.get(lang)
+        if not model:
+            fallback = "ro" if "ro" in self._models else next(iter(self._models), None)
+            if fallback:
+                model = self._models[fallback]
+                self._lang = fallback
+            else:
+                return None
+        return KaldiRecognizer(model, config.AUDIO_SAMPLERATE)
 
     def start(self):
-        if self._thread and self._thread.is_alive():
-            return
-        if not self._load_model() and not config.MOCK_HARDWARE:
+        if not self._load_models() and not config.MOCK_HARDWARE:
             return
         self._running = True
         self._thread = threading.Thread(target=self._listen_loop, daemon=True)
         self._thread.start()
-        logger.info("STT pornit")
+        logger.info("STT pornit (lang=%s)", self._lang)
 
     def stop(self):
         self._running = False
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2)
-        self._thread = None
+
+    def _resolve_input_settings(self) -> tuple[int | str, int]:
+        preferred = config.AUDIO_INPUT_DEVICE
+        candidates: list[tuple[int | str, int]] = [
+            (preferred, config.AUDIO_SAMPLERATE),
+            ("default", config.AUDIO_SAMPLERATE),
+        ]
+
+        for device, rate in candidates:
+            try:
+                sd.check_input_settings(
+                    device=device,
+                    samplerate=rate,
+                    channels=1,
+                    dtype="int16",
+                )
+                if device != preferred or rate != config.AUDIO_SAMPLERATE:
+                    logger.info(
+                        "Microfon: device=%s samplerate=%s (config: %s @ %s)",
+                        device,
+                        rate,
+                        preferred,
+                        config.AUDIO_SAMPLERATE,
+                    )
+                return device, rate
+            except Exception:
+                continue
+
+        for device in (preferred, "default"):
+            try:
+                info = sd.query_devices(device, "input")
+                native = int(info["default_samplerate"])
+                sd.check_input_settings(
+                    device=device,
+                    samplerate=native,
+                    channels=1,
+                    dtype="int16",
+                )
+                logger.info(
+                    "Microfon native %s Hz pe device=%s — resample la %s",
+                    native,
+                    device,
+                    config.AUDIO_SAMPLERATE,
+                )
+                return device, native
+            except Exception:
+                continue
+
+        raise RuntimeError("Niciun dispozitiv de intrare audio compatibil")
+
+    def _to_vosk_pcm(self, data: bytes, capture_rate: int) -> bytes:
+        if capture_rate == config.AUDIO_SAMPLERATE:
+            return data
+        data, self._resample_state = audioop.ratecv(
+            data,
+            2,
+            1,
+            capture_rate,
+            config.AUDIO_SAMPLERATE,
+            self._resample_state,
+        )
+        return data
 
     def _listen_loop(self):
-        if config.MOCK_HARDWARE or not HAS_AUDIO or not self.model:
+        if config.MOCK_HARDWARE or not HAS_AUDIO or not self._models:
             logger.info("Mod simulare auz - STT dezactivat")
             return
 
-        recognizer = KaldiRecognizer(self.model, config.AUDIO_SAMPLERATE)
-        recognizer.SetWords(True)
-
         def callback(indata, frames, time_info, status):
             if status:
-                logger.warning(f"Audio status: {status}")
-            if self._paused:
-                return
-            self._audio_queue.put(bytes(indata))
+                logger.warning("Audio status: %s", status)
+            with self._lock:
+                if self._enabled:
+                    self._audio_queue.put(bytes(indata))
 
-        with sd.RawInputStream(
-            samplerate=config.AUDIO_SAMPLERATE,
-            blocksize=8000,
-            dtype="int16",
-            channels=1,
-            device=config.AUDIO_DEVICE_INDEX,
-            callback=callback,
-        ):
-            while self._running:
-                try:
-                    data = self._audio_queue.get(timeout=1)
-                    if self._paused:
-                        continue
-                    if recognizer.AcceptWaveform(data):
-                        result = json.loads(recognizer.Result())
-                        text = result.get("text", "").strip()
-                        if text and self.on_speech:
-                            logger.info(f"Recunoscut: {text}")
-                            self.on_speech(text)
-                    else:
-                        partial = json.loads(recognizer.PartialResult())
-                        partial_text = partial.get("partial", "")
-                        if partial_text:
-                            pass  # optional: streaming partial results
-                except queue.Empty:
-                    continue
-                except Exception as e:
-                    logger.error(f"Eroare STT: {e}")
+        while self._running:
+            try:
+                device, capture_rate = self._resolve_input_settings()
+                self._resample_state = None
+                logger.info(
+                    "Deschid microfon device=%s rate=%s", device, capture_rate
+                )
+
+                with sd.RawInputStream(
+                    samplerate=capture_rate,
+                    blocksize=max(4000, capture_rate // 4),
+                    dtype="int16",
+                    channels=1,
+                    device=device,
+                    callback=callback,
+                ):
+                    while self._running:
+                        try:
+                            data = self._audio_queue.get(timeout=1)
+                        except queue.Empty:
+                            continue
+
+                        with self._lock:
+                            if not self._enabled or not self._recognizer:
+                                continue
+                            recognizer = self._recognizer
+                            route = self._route
+                            lang = self._lang
+
+                        try:
+                            pcm = self._to_vosk_pcm(data, capture_rate)
+                            if recognizer.AcceptWaveform(pcm):
+                                result = json.loads(recognizer.Result())
+                                text = result.get("text", "").strip()
+                                if text and self.on_speech:
+                                    logger.info("Recunoscut [%s]: %s", lang, text)
+                                    self.on_speech(text, lang, route)
+                        except Exception as exc:
+                            logger.error("Eroare STT: %s", exc)
+            except Exception as exc:
+                logger.error("Microfon indisponibil: %s — retry in 5s", exc)
+                time.sleep(5)
+
+    @staticmethod
+    def guess_lang(text: str) -> str:
+        if re.search(r"[ăâîșțĂÂÎȘȚ]", text):
+            return "ro"
+        return "en"
 
     async def run_mock_loop(self):
-        """Placeholder for testing without microphone."""
         if not config.MOCK_HARDWARE:
             return
         while self._running:

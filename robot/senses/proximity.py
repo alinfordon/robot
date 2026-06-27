@@ -3,19 +3,10 @@ import time
 from typing import Callable, Dict, Optional, Tuple
 
 import config
+from utils.gpio import GPIO, HAS_GPIO
 from utils.logger import get_logger
 
 logger = get_logger("Proximity")
-
-try:
-    if not config.MOCK_HARDWARE:
-        import RPi.GPIO as GPIO
-
-        HAS_GPIO = True
-    else:
-        HAS_GPIO = False
-except ImportError:
-    HAS_GPIO = False
 
 SENSORS: Dict[str, Tuple[int, int]] = {
     "front": (config.US_FRONT_TRIG, config.US_FRONT_ECHO),
@@ -33,19 +24,24 @@ class ProximitySensors:
         self._threads: list = []
         self._lock = threading.Lock()
 
+        self._has_gpio = False
         if HAS_GPIO:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setwarnings(False)
-            for name, (trig, echo) in SENSORS.items():
-                GPIO.setup(trig, GPIO.OUT)
-                GPIO.setup(echo, GPIO.IN)
-                GPIO.output(trig, GPIO.LOW)
-            logger.info("4 senzori HC-SR04 initializati")
+            try:
+                GPIO.setmode(GPIO.BCM)
+                GPIO.setwarnings(False)
+                for name, (trig, echo) in SENSORS.items():
+                    GPIO.setup(trig, GPIO.OUT)
+                    GPIO.setup(echo, GPIO.IN)
+                    GPIO.output(trig, GPIO.LOW)
+                self._has_gpio = True
+                logger.info("4 senzori HC-SR04 initializati")
+            except Exception as exc:
+                logger.warning("Init senzori esuat (%s) - mod simulare", exc)
         else:
             logger.warning("Mod simulare senzori")
 
     def _read_distance(self, trig: int, echo: int) -> float:
-        if not HAS_GPIO:
+        if not self._has_gpio:
             import random
 
             return random.uniform(30, 120)
@@ -117,5 +113,5 @@ class ProximitySensors:
 
     def cleanup(self):
         self.stop()
-        if HAS_GPIO:
+        if self._has_gpio:
             GPIO.cleanup()

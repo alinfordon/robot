@@ -1,33 +1,29 @@
 import asyncio
 
 import config
+from utils.gpio import GPIO, HAS_GPIO
 from utils.logger import get_logger
 
 logger = get_logger("IR")
-
-try:
-    if not config.MOCK_HARDWARE:
-        import RPi.GPIO as GPIO
-
-        HAS_GPIO = True
-    else:
-        HAS_GPIO = False
-except ImportError:
-    HAS_GPIO = False
 
 
 class InfraredEmitter:
     """OKY3273 IR emitter control via GPIO."""
 
     def __init__(self):
+        self._has_gpio = False
         if HAS_GPIO:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(config.IR_PIN, GPIO.OUT)
-            logger.info("Emițător IR initializat")
+            try:
+                GPIO.setmode(GPIO.BCM)
+                GPIO.setup(config.IR_PIN, GPIO.OUT)
+                self._has_gpio = True
+                logger.info("Emițător IR initializat")
+            except Exception as exc:
+                logger.warning("Init IR esuat (%s) - mod simulare", exc)
 
     async def send(self, code: str):
         logger.info(f"Trimit cod IR: {code}")
-        if config.MOCK_HARDWARE or not HAS_GPIO:
+        if config.MOCK_HARDWARE or not self._has_gpio:
             logger.info(f"[Mock IR] {code}")
             return
 
@@ -45,5 +41,5 @@ class InfraredEmitter:
             logger.error(f"Eroare IR: {e}")
 
     def cleanup(self):
-        if HAS_GPIO:
+        if self._has_gpio:
             GPIO.cleanup(config.IR_PIN)

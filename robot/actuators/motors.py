@@ -3,20 +3,10 @@ import time
 from typing import Callable, Optional
 
 import config
+from utils.gpio import GPIO, HAS_GPIO
 from utils.logger import get_logger
 
 logger = get_logger("Motors")
-
-try:
-    if not config.MOCK_HARDWARE:
-        import RPi.GPIO as GPIO
-
-        HAS_GPIO = True
-    else:
-        HAS_GPIO = False
-except ImportError:
-    HAS_GPIO = False
-    logger.warning("RPi.GPIO indisponibil - mod simulare")
 
 
 class MotorController:
@@ -28,7 +18,10 @@ class MotorController:
         self._initialized = False
 
         if HAS_GPIO:
-            self._setup_gpio()
+            try:
+                self._setup_gpio()
+            except Exception as exc:
+                logger.warning("Init motoare esuat (%s) - mod simulare", exc)
 
     def _setup_gpio(self):
         GPIO.setmode(GPIO.BCM)
