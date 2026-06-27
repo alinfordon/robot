@@ -64,6 +64,7 @@ TFT_MISO = 9
 TFT_WIDTH = 240
 TFT_HEIGHT = 320
 TFT_SPI_SPEED = 40_000_000
+TFT_ROTATION = 0  # 240x320: doar 0 sau 180 (st7789 nu accepta 90/270)
 
 # Audio — traducator RO<->EN (Vosk STT + Piper TTS)
 VOSK_MODEL_PATH = os.getenv(

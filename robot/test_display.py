@@ -61,6 +61,7 @@ def test_raw():
             backlight=config.TFT_BL,
             width=config.TFT_WIDTH,
             height=config.TFT_HEIGHT,
+            rotation=getattr(config, "TFT_ROTATION", 0),
             spi_speed_hz=config.TFT_SPI_SPEED,
         )
     except Exception as e:

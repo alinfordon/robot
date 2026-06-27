@@ -27,6 +27,8 @@ TFT_BL = _cfg("TFT_BL", 15)
 TFT_WIDTH = _cfg("TFT_WIDTH", 240)
 TFT_HEIGHT = _cfg("TFT_HEIGHT", 320)
 TFT_SPI_SPEED = _cfg("TFT_SPI_SPEED", 40_000_000)
+# Pentru 240x320 (ne-patrat) st7789 accepta DOAR 0 sau 180
+TFT_ROTATION = _cfg("TFT_ROTATION", 0)
 
 
 # Detectie dependente, fara a opri robotul daca lipsesc
@@ -93,6 +95,7 @@ class RobotDisplay:
                     backlight=TFT_BL,
                     width=TFT_WIDTH,
                     height=TFT_HEIGHT,
+                    rotation=TFT_ROTATION,
                     spi_speed_hz=TFT_SPI_SPEED,
                 )
                 logger.info("Display ST7789V initializat")
