@@ -47,13 +47,16 @@ EOF
 }
 
 enable_spi() {
-  # Display TFT ST7789V are nevoie de SPI0 (/dev/spidev0.0)
+  # Display TFT ST7789V: SPI0 cu UN singur chip-select (CE0/GPIO8).
+  # Folosim dtoverlay=spi0-1cs (NU dtparam=spi=on) ca sa eliberam GPIO7
+  # (CE1), care la noi e folosit ca DC. Altfel DC da "Device busy".
   for CFG in /boot/firmware/config.txt /boot/config.txt; do
     if [ -f "$CFG" ]; then
-      if ! grep -q "^dtparam=spi=on" "$CFG"; then
-        echo "Activez SPI in $CFG"
-        echo "dtparam=spi=on" | sudo tee -a "$CFG" > /dev/null
-        echo "SPI activat - reboot necesar pentru /dev/spidev0.0"
+      sudo sed -i '/^dtparam=spi=on/d' "$CFG"
+      if ! grep -q "^dtoverlay=spi0-1cs" "$CFG"; then
+        echo "Activez SPI (spi0-1cs) in $CFG"
+        echo "dtoverlay=spi0-1cs" | sudo tee -a "$CFG" > /dev/null
+        echo "SPI activat - reboot necesar (elibereaza GPIO7 pentru DC)"
       fi
       break
     fi
