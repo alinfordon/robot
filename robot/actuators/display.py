@@ -31,6 +31,12 @@ TFT_SPI_SPEED = _cfg("TFT_SPI_SPEED", 40_000_000)
 TFT_ROTATION = _cfg("TFT_ROTATION", 0)
 # Index hardware CE pentru spidev (NU pinul GPIO!): 0=CE0/GPIO8, 1=CE1/GPIO7
 TFT_SPI_CS = _cfg("TFT_SPI_CS", 0)
+# Panou ST7789V generic 240x320: SPI mode 3 (None = lasa default-ul librariei)
+TFT_SPI_MODE = _cfg("TFT_SPI_MODE", 3)
+# Panou BGR: schimba ordinea R<->B la afisare (rosu/albastru inversate)
+TFT_BGR = _cfg("TFT_BGR", True)
+# Inversare luminozitate (INVON). Multe panouri IPS au nevoie de True
+TFT_INVERT = _cfg("TFT_INVERT", True)
 
 
 # Detectie dependente, fara a opri robotul daca lipsesc
@@ -99,7 +105,13 @@ class RobotDisplay:
                     height=TFT_HEIGHT,
                     rotation=TFT_ROTATION,
                     spi_speed_hz=TFT_SPI_SPEED,
+                    invert=TFT_INVERT,
                 )
+                # Panou ST7789V generic: necesita SPI mode 3 + re-init
+                if TFT_SPI_MODE is not None:
+                    self.disp._spi.mode = TFT_SPI_MODE
+                    self.disp.reset()
+                    self.disp._init()
                 logger.info("Display ST7789V initializat")
             except Exception as e:
                 logger.warning(f"Init ST7789 esuat: {e}")
@@ -141,7 +153,13 @@ class RobotDisplay:
         """Trimite buffer-ul catre ecran (sau ignora in mock)."""
         try:
             if self.disp is not None and self.img is not None:
-                self.disp.display(self.img)
+                img = self.img
+                if TFT_BGR:
+                    from PIL import Image
+
+                    r, g, b = img.split()
+                    img = Image.merge("RGB", (b, g, r))
+                self.disp.display(img)
         except Exception as e:
             logger.warning(f"Flush display esuat: {e}")
 

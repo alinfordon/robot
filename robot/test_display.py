@@ -73,7 +73,13 @@ def test_raw():
             height=config.TFT_HEIGHT,
             rotation=getattr(config, "TFT_ROTATION", 0),
             spi_speed_hz=config.TFT_SPI_SPEED,
+            invert=getattr(config, "TFT_INVERT", True),
         )
+        mode = getattr(config, "TFT_SPI_MODE", 3)
+        if mode is not None:
+            disp._spi.mode = mode
+            disp.reset()
+            disp._init()
     except Exception as e:
         print(f"[EROARE] Init ST7789 esuat: {e}")
         print("--- traceback complet ---")
