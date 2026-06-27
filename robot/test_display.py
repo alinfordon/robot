@@ -12,9 +12,11 @@ Etape:
      vorbire, ascultare, gandire, alerta, obiecte)
 """
 
+import glob
 import os
 import sys
 import time
+import traceback
 
 # Permite rularea din orice director
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -38,8 +40,16 @@ def check_spi():
     print(
         f"Pini config: CS={config.TFT_CS} DC={config.TFT_DC} RST={config.TFT_RST} "
         f"BL={config.TFT_BL} | {config.TFT_WIDTH}x{config.TFT_HEIGHT} @ "
-        f"{config.TFT_SPI_SPEED} Hz"
+        f"{config.TFT_SPI_SPEED} Hz  rotation={getattr(config, 'TFT_ROTATION', 0)}"
     )
+    chips = sorted(glob.glob("/dev/gpiochip*"))
+    print(f"GPIO chips: {chips if chips else 'NICIUNUL'}")
+    try:
+        import st7789
+
+        print(f"st7789 versiune: {getattr(st7789, '__version__', '?')}")
+    except Exception as e:
+        print(f"st7789 import esuat: {e}")
 
 
 def test_raw():
@@ -66,6 +76,9 @@ def test_raw():
         )
     except Exception as e:
         print(f"[EROARE] Init ST7789 esuat: {e}")
+        print("--- traceback complet ---")
+        traceback.print_exc()
+        print("-------------------------")
         return False
 
     for name, color in (("ROSU", (255, 0, 0)), ("VERDE", (0, 255, 0)), ("ALBASTRU", (0, 0, 255))):
