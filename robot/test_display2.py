@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Diagnostic avansat pentru ST7789V 240x320 generic (ecran gol).
+"""Diagnostic ST7789V 240x320 - O SINGURA varianta per rulare (fara busy).
 
-Incearca mai multe variante si se opreste cu pauza la fiecare, ca sa vezi
-CARE aprinde / afiseaza ceva pe ecran.
-
+Utilizare (opreste intai serviciul ca sa elibereze pinii):
     cd ~/robot
     sudo systemctl stop robot
-    venv/bin/python test_display2.py
+    venv/bin/python test_display2.py bl     # doar backlight (panoul se lumineaza?)
+    venv/bin/python test_display2.py a      # init implicit
+    venv/bin/python test_display2.py b       # SPI mode 3
+    venv/bin/python test_display2.py c       # invert=False
 """
 
 import os
@@ -25,70 +26,43 @@ RST = config.TFT_RST
 BL = config.TFT_BL
 SPEED = config.TFT_SPI_SPEED
 
+variant = (sys.argv[1] if len(sys.argv) > 1 else "a").lower()
+print(f"Varianta: {variant} | CS(idx)={CS} DC={DC} RST={RST} BL={BL} @ {SPEED}Hz")
 
-def make_disp(**extra):
-    return st7789.ST7789(
-        port=0, cs=CS, dc=DC, rst=RST, backlight=BL,
-        width=240, height=320, rotation=0, spi_speed_hz=SPEED, **extra
-    )
+extra = {}
+if variant == "c":
+    extra["invert"] = False
 
+disp = st7789.ST7789(
+    port=0, cs=CS, dc=DC, rst=RST, backlight=BL,
+    width=240, height=320, rotation=0, spi_speed_hz=SPEED, **extra,
+)
 
-def show(disp, color, secs=6):
+try:
+    disp.set_backlight(1)
+    print("set_backlight(1) OK")
+except Exception as e:
+    print(f"set_backlight indisponibil: {e}")
+
+if variant == "bl":
+    print(">>> Doar BACKLIGHT 10s. Panoul se lumineaza alb slab? (DA/NU)")
+    time.sleep(10)
+    sys.exit(0)
+
+if variant == "b":
+    try:
+        disp._spi.mode = 3
+        disp.reset()
+        disp._init()
+        disp.set_backlight(1)
+        print("SPI mode 3 aplicat")
+    except Exception as e:
+        print(f"mode3 esuat: {e}")
+
+for name, color in (("ALB", (255, 255, 255)), ("ROSU", (255, 0, 0)),
+                    ("VERDE", (0, 255, 0)), ("ALBASTRU", (0, 0, 255))):
+    print(f">>> {name} 5s")
     disp.display(Image.new("RGB", (240, 320), color))
-    time.sleep(secs)
+    time.sleep(5)
 
-
-def attempt(name, **extra):
-    print(f"\n=== {name} ===")
-    try:
-        d = make_disp(**extra)
-        try:
-            d.set_backlight(1)
-            print("  set_backlight(1) OK")
-        except Exception as e:
-            print(f"  set_backlight indisponibil: {e}")
-        print("  -> ALB 6s (uita-te la ecran)")
-        show(d, (255, 255, 255))
-        print("  -> ROSU 4s")
-        show(d, (255, 0, 0), 4)
-        return d
-    except Exception as e:
-        print(f"  [EROARE] {e}")
-        return None
-
-
-if __name__ == "__main__":
-    print(f"Pini: CS(idx)={CS} DC={DC} RST={RST} BL={BL} @ {SPEED}Hz")
-
-    # 1. Backlight separat, ca sa vedem daca panoul se lumineaza deloc
-    print("\n=== BACKLIGHT direct (GPIO15) ===")
-    try:
-        d0 = make_disp()
-        d0.set_backlight(1)
-        print("  Backlight ON 6s - vezi o lumina alba slaba pe panou?")
-        time.sleep(6)
-    except Exception as e:
-        print(f"  [EROARE] {e}")
-
-    # 2. Init implicit
-    attempt("VARIANTA A: init implicit")
-
-    # 3. SPI mode 3 (multe panouri ST7789V au nevoie de mode 3)
-    d = attempt("VARIANTA B: SPI mode 3")
-    if d is not None:
-        try:
-            d._spi.mode = 3
-            d.reset()
-            d._init()
-            d.set_backlight(1)
-            show(d, (0, 255, 0))
-        except Exception as e:
-            print(f"  mode3 manual esuat: {e}")
-
-    # 4. invert=False
-    attempt("VARIANTA C: invert=False", invert=False)
-
-    # 5. offset (unele panouri 240x320 au offset)
-    attempt("VARIANTA D: offset_left/top variabil", offset_left=0, offset_top=0)
-
-    print("\nGata. Spune-mi care varianta a afisat ceva (sau lumina backlight).")
+print("Gata. Ai vazut culorile? (sau backlight aprins fara imagine?)")
