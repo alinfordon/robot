@@ -80,6 +80,10 @@ def test_raw():
             disp._spi.mode = mode
             disp.reset()
             disp._init()
+        madctl = getattr(config, "TFT_MADCTL", 0x00)
+        if madctl is not None:
+            disp.command(0x36)  # MADCTL: portret real 240x320 (lib hardcodeaza 0x70)
+            disp.data(madctl)
     except Exception as e:
         print(f"[EROARE] Init ST7789 esuat: {e}")
         print("--- traceback complet ---")

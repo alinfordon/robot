@@ -33,6 +33,8 @@ TFT_ROTATION = _cfg("TFT_ROTATION", 0)
 TFT_SPI_CS = _cfg("TFT_SPI_CS", 0)
 # Panou ST7789V generic 240x320: SPI mode 3 (None = lasa default-ul librariei)
 TFT_SPI_MODE = _cfg("TFT_SPI_MODE", 3)
+# MADCTL pentru portret real 240x320 (libraria hardcodeaza 0x70 = patrat 240x240)
+TFT_MADCTL = _cfg("TFT_MADCTL", 0x00)
 # Panou BGR: schimba ordinea R<->B la afisare (rosu/albastru inversate)
 TFT_BGR = _cfg("TFT_BGR", True)
 # Inversare luminozitate (INVON). Multe panouri IPS au nevoie de True
@@ -112,6 +114,12 @@ class RobotDisplay:
                     self.disp._spi.mode = TFT_SPI_MODE
                     self.disp.reset()
                     self.disp._init()
+                # Libraria st7789 hardcodeaza MADCTL=0x70 (MV=1 -> orientare patrata
+                # 240x240). Suprascriem pentru portret real 240x320, altfel imaginea
+                # iese patrata si informatiile se suprapun.
+                if TFT_MADCTL is not None:
+                    self.disp.command(0x36)  # MADCTL
+                    self.disp.data(TFT_MADCTL)
                 logger.info("Display ST7789V initializat")
             except Exception as e:
                 logger.warning(f"Init ST7789 esuat: {e}")

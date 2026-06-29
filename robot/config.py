@@ -69,6 +69,10 @@ TFT_ROTATION = 0  # 240x320: doar 0 sau 180 (st7789 nu accepta 90/270)
 TFT_SPI_CS = 0
 # Panou ST7789V generic 240x320: SPI mode 3 (None = default librarie)
 TFT_SPI_MODE = 3
+# MADCTL: libraria st7789 hardcodeaza 0x70 (MV=1, orientare patrata 240x240).
+# Pentru portret real 240x320 fara swap rand/coloana: 0x00.
+# Variante: 0x00 portret, 0xC0 portret 180, 0x60/0xA0 landscape (necesita W/H swap).
+TFT_MADCTL = 0x00
 # Panou BGR: schimba R<->B la afisare (daca rosu/albastru sunt inversate)
 TFT_BGR = True
 # Inversare luminozitate INVON (de obicei True la panourile IPS)
