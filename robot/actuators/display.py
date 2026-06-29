@@ -266,6 +266,37 @@ class RobotDisplay:
             (self.W - 28, 10), "PC", font=self.font_small, fill=self.WHITE
         )
 
+        # Semnal WiFi dreapta jos (rand 2)
+        self._draw_wifi(state)
+
+    def _draw_wifi(self, state: dict):
+        wifi = state.get("wifi") or {}
+        connected = bool(wifi.get("connected"))
+        pct = int(wifi.get("percent", 0) or 0)
+
+        baseline = 46
+        x0 = self.W - 33
+        bar_w, gap = 4, 3
+        heights = (6, 10, 14, 18)
+
+        if connected:
+            active = 1 + min(3, pct // 25)
+            color = self.GREEN if pct >= 60 else self.YELLOW if pct >= 30 else self.RED
+        else:
+            active = 0
+            color = self.GRAY
+
+        for i, h in enumerate(heights):
+            x = x0 + i * (bar_w + gap)
+            top = baseline - h
+            fill = color if i < active else self.DARK
+            self.draw.rectangle((x, top, x + bar_w, baseline), fill=fill, outline=color)
+
+        txt = f"{pct}%" if connected else "LAN"
+        tcol = color if connected else self.GRAY
+        w, _ = self._text_size(txt, self.font_small)
+        self.draw.text((x0 - w - 5, 34), txt, font=self.font_small, fill=tcol)
+
     def _draw_footer(self, state: dict):
         ip = str(state.get("ip", "—"))
         mode = str(state.get("mode", "manual"))

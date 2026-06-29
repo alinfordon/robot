@@ -119,10 +119,17 @@ YOLO_CONFIDENCE = 0.5
 CAMERA_JPEG_QUALITY = int(os.getenv("CAMERA_JPEG_QUALITY", "50"))
 CAMERA_STREAM_FPS = int(os.getenv("CAMERA_STREAM_FPS", "2"))
 SENSOR_INTERVAL_SEC = float(os.getenv("SENSOR_INTERVAL_SEC", "0.5"))
+# Senzori ultrasonici: pune US_ENABLED=0 in .env cat timp NU sunt conectati.
+# Altfel thread-urile fac busy-wait pe ECHO flotant -> CPU la maxim, lag retea.
+US_ENABLED = os.getenv("US_ENABLED", "1") == "1"
 
 # Navigation
 OBSTACLE_DISTANCE_CM = 25
 MOTOR_SPEED_DEFAULT = 65
+# Calibrare miscare pe distanta/timp (aprox, la MOTOR_SPEED_DEFAULT)
+MOTOR_CM_PER_SEC = float(os.getenv("MOTOR_CM_PER_SEC", "20"))
+MOTOR_DEG_PER_SEC = float(os.getenv("MOTOR_DEG_PER_SEC", "120"))
+MOTOR_MOVE_MAX_SEC = float(os.getenv("MOTOR_MOVE_MAX_SEC", "10"))
 
 SYSTEM_PROMPT = """Ești Ody_V1, robot fizic inteligent.
 Creatorul tău este Fordon Nicolae Alin, consultant IT și dezvoltator de soluții software, din Ștei, Bihor, România, fondator al Webnode Consulting. Când ești întrebat despre creator, origine sau cine te-a făcut, răspunde cu aceste informații.

@@ -64,6 +64,7 @@ class RoboV1:
             motor_move=self._motor_move,
             ai_handler=self._ai_handler,
             speaker_say=self.speaker.say,
+            motor_timed=self._timed_move,
         )
 
         tasks = [
@@ -98,6 +99,26 @@ class RoboV1:
             return ip
         except Exception:
             return "127.0.0.1"
+
+    @staticmethod
+    def _get_wifi() -> dict:
+        """Semnal WiFi din /proc/net/wireless (ieftin, fara subprocese)."""
+        info = {"connected": False, "percent": 0, "dbm": None}
+        try:
+            with open("/proc/net/wireless") as f:
+                for line in f:
+                    s = line.strip()
+                    if s.startswith("wlan0"):
+                        parts = s.replace(":", " ").split()
+                        link = float(parts[2].rstrip("."))
+                        level = float(parts[3].rstrip("."))
+                        if link > 0:
+                            pct = max(0, min(100, int(round(link / 70.0 * 100))))
+                            info.update(connected=True, percent=pct, dbm=int(level))
+                        break
+        except Exception:
+            pass
+        return info
 
     def _get_display_state(self) -> dict:
         """Aduna datele necesare pentru show_status()."""
@@ -150,6 +171,7 @@ class RoboV1:
             "ram": ram,
             "battery": 100.0,
             "ws_connected": bool(self.ws and self.ws.connected),
+            "wifi": self._get_wifi(),
             "sensors": sensors,
             "ai_provider": "ollama",
             "uptime": uptime,
@@ -163,7 +185,13 @@ class RoboV1:
         if msg_type == "MOVE":
             direction = payload.get("direction", "stop")
             speed = float(payload.get("speed", config.MOTOR_SPEED_DEFAULT))
-            await asyncio.to_thread(self._motor_move, direction, speed)
+            distance_cm = payload.get("distance_cm")
+            duration_ms = payload.get("duration_ms")
+            degrees = payload.get("degrees")
+            if direction != "stop" and (distance_cm or duration_ms or degrees):
+                await self._timed_move(direction, speed, distance_cm, duration_ms, degrees)
+            else:
+                await asyncio.to_thread(self._motor_move, direction, speed)
 
         elif msg_type == "SPEAK":
             text = payload.get("text", "")
@@ -243,6 +271,22 @@ class RoboV1:
             objects = payload.get("objects", [])
             if self.vision:
                 self.vision.set_detected_objects(objects)
+
+    async def _timed_move(self, direction, speed, distance_cm=None, duration_ms=None, degrees=None):
+        """Misca pe o distanta/unghi/timp dat, apoi opreste automat."""
+        if duration_ms:
+            secs = float(duration_ms) / 1000.0
+        elif degrees and direction in ("left", "right"):
+            secs = float(degrees) / max(1.0, config.MOTOR_DEG_PER_SEC)
+        elif distance_cm:
+            secs = float(distance_cm) / max(1.0, config.MOTOR_CM_PER_SEC)
+        else:
+            secs = 0.5
+        secs = max(0.1, min(secs, config.MOTOR_MOVE_MAX_SEC))
+
+        await asyncio.to_thread(self._motor_move, direction, speed)
+        await asyncio.sleep(secs)
+        await asyncio.to_thread(self._motor_move, "stop", 0)
 
     def _motor_move(self, direction: str, speed: float):
         if direction == "stop":

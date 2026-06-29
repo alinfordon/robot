@@ -207,15 +207,133 @@ async function chatGoogle(
 }
 
 async function speakOnRobot(text: string) {
+  await sendRobotCommand("SPEAK", { text });
+}
+
+async function sendRobotCommand(type: string, payload: Record<string, unknown>): Promise<boolean> {
   try {
-    await fetch(`${WS_HTTP}/robot/command`, {
+    const res = await fetch(`${WS_HTTP}/robot/command`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "SPEAK", payload: { text } }),
+      body: JSON.stringify({ type, payload }),
     });
+    const data = await res.json().catch(() => ({}));
+    return Boolean(data?.ok);
   } catch {
-    /* robot may be offline */
+    return false; /* robot may be offline */
   }
+}
+
+type MoveDir = "forward" | "backward" | "left" | "right" | "stop";
+
+interface MotorCommand {
+  direction: MoveDir;
+  distanceCm?: number;
+  degrees?: number;
+  durationMs?: number;
+}
+
+/** Detecteaza comenzi de miscare in text (RO/EN). Returneaza null daca nu e comanda. */
+function parseMotorCommand(text: string): MotorCommand | null {
+  const t = text.toLowerCase().trim();
+
+  // STOP e mereu comanda
+  if (/\b(stop|opre[șs]te|oprire|sta[țt]ioneaz[aă])\b/.test(t)) return { direction: "stop" };
+
+  const motionVerb =
+    /\b(mergi|du[\s-]?te|deplaseaz[aă]|[iî]nainteaz[aă]|inainteaz[aă]|recule[a-z]*|vireaz[aă]|rote[șs]te|roti[a-z]*|[iî]ntoarce[a-z]*|cote[șs]te|avanseaz[aă]|move|go|turn|drive)\b/.test(t);
+  const hasNumber = /\d/.test(t);
+  const isShort = t.split(/\s+/).length <= 3;
+  const isQuestion =
+    /\b(ce|unde|c[aâ]t|cum|exist[aă]|vezi|vedea|este|sunt|afl[aă]|spune|zi|arat[aă]|po[țt]i)\b/.test(t) ||
+    t.includes("?");
+
+  let direction: MoveDir | null = null;
+  if (/\b([iî]napoi|inapoi|backward|reverse)\b/.test(t)) direction = "backward";
+  else if (/\b(st[aâ]nga|left)\b/.test(t)) direction = "left";
+  else if (/\b(dreapta|right)\b/.test(t)) direction = "right";
+  else if (/\b(mergi|[iî]nainte|inainte|[iî]nainteaz[aă]|inainteaz[aă]|forward|fa[țt][aă])\b/.test(t))
+    direction = "forward";
+
+  if (!direction) return null;
+
+  // Anti fals-pozitiv: directie fara verb de miscare si fara numar, intr-o
+  // intrebare sau fraza lunga -> probabil conversatie ("ce e in dreapta?")
+  if (!motionVerb && !hasNumber) {
+    if (isQuestion || !isShort) return null;
+  }
+
+  const cmd: MotorCommand = { direction };
+
+  // grade (pentru viraje)
+  const deg = t.match(/(\d+(?:[.,]\d+)?)\s*(grade|grad|°|deg)/);
+  if (deg && (direction === "left" || direction === "right")) {
+    cmd.degrees = parseFloat(deg[1].replace(",", "."));
+    return cmd;
+  }
+
+  // distanta / timp
+  const m = t.match(/(\d+(?:[.,]\d+)?)\s*(centimetr\w*|cm|metri|metru|secund\w*|sec|s|m)\b/);
+  if (m) {
+    const val = parseFloat(m[1].replace(",", "."));
+    const unit = m[2];
+    if (/^(secund|sec|s)$/.test(unit)) cmd.durationMs = Math.round(val * 1000);
+    else if (/^(metri|metru|m)$/.test(unit)) cmd.distanceCm = Math.round(val * 100);
+    else cmd.distanceCm = Math.round(val); // cm / centimetri
+  }
+  return cmd;
+}
+
+function buildMotorReply(c: MotorCommand): string {
+  if (c.direction === "stop") return "M-am oprit.";
+  const dirRo: Record<MoveDir, string> = {
+    forward: "înainte",
+    backward: "înapoi",
+    left: "la stânga",
+    right: "la dreapta",
+    stop: "oprire",
+  };
+  let extra = "";
+  if (c.distanceCm) extra = ` ${c.distanceCm} cm`;
+  else if (c.degrees) extra = ` ${c.degrees}°`;
+  else if (c.durationMs) extra = ` ${(c.durationMs / 1000).toFixed(0)}s`;
+  return `OK, merg ${dirRo[c.direction]}${extra}.`;
+}
+
+/** Detecteaza comenzi de schimbare a modului (auto/patrol/manual/vision). */
+function parseModeCommand(text: string): RobotMode | null {
+  const t = text.toLowerCase().trim();
+
+  // intrebari -> nu sunt comenzi ("in ce mod esti?")
+  if (/\b(ce|care|cum|[iî]n ce)\b/.test(t) || t.includes("?")) return null;
+
+  const imperative =
+    /\b(mod\w*|trec[ie]?|intr[aă]|activeaz[aă]|porne[șs]te|schimb[aă]|comut[aă]|seteaz[aă]|pune|setare)\b/.test(t);
+
+  let mode: RobotMode | null = null;
+  if (/\b(patrul\w*|patrol)\b/.test(t)) mode = "patrol";
+  else if (/\b(auto\w*|automat\w*|navigheaz[aă]|evit[aă]\s+obstacol\w*|ocole[șs]te)\b/.test(t)) mode = "auto";
+  else if (/\b(vision|viziune|vizual\w*|urm[aă]re[șs]te)\b/.test(t)) mode = "vision";
+  else if (/\bmanual\w*\b/.test(t)) mode = "manual";
+
+  if (!mode) return null;
+
+  // Cere context imperativ pentru a evita fals-pozitive conversationale,
+  // exceptie: cuvinte deja foarte explicite (patrolare, navigheaza, evita obstacole)
+  const explicit = /\b(patrul\w*|patrol|navigheaz[aă]|evit[aă]\s+obstacol\w*)\b/.test(t);
+  if (!imperative && !explicit) return null;
+
+  return mode;
+}
+
+function buildModeReply(mode: RobotMode): string {
+  const ro: Record<RobotMode, string> = {
+    auto: "automat (navigare autonomă)",
+    manual: "manual",
+    vision: "viziune",
+    patrol: "patrulare",
+  };
+  return `Am trecut în modul ${ro[mode]}.`;
 }
 
 export async function POST(request: NextRequest) {
@@ -239,6 +357,35 @@ export async function POST(request: NextRequest) {
 
     if (!messages.length) {
       return NextResponse.json({ error: "No messages" }, { status: 400 });
+    }
+
+    // Comenzi de miscare: trimite MOVE direct la motoare (fara LLM), raspuns scurt
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content || "";
+    const motorCmd = parseMotorCommand(lastUserMsg);
+    if (motorCmd) {
+      const payload: Record<string, unknown> = {
+        direction: motorCmd.direction,
+        speed: 65,
+      };
+      if (motorCmd.distanceCm) payload.distance_cm = motorCmd.distanceCm;
+      if (motorCmd.degrees) payload.degrees = motorCmd.degrees;
+      if (motorCmd.durationMs) payload.duration_ms = motorCmd.durationMs;
+
+      const sent = await sendRobotCommand("MOVE", payload);
+      const reply = sent ? buildMotorReply(motorCmd) : "Robotul nu este conectat, nu pot executa comanda.";
+      if (speak && sent) await speakOnRobot(reply);
+      void saveChatMemory(lastUserMsg, reply);
+      return NextResponse.json({ reply, provider: "robot", model: "motor-control" });
+    }
+
+    // Comenzi de mod: trimite SET_MODE direct la robot (fara LLM)
+    const modeCmd = parseModeCommand(lastUserMsg);
+    if (modeCmd) {
+      const sent = await sendRobotCommand("SET_MODE", { mode: modeCmd });
+      const reply = sent ? buildModeReply(modeCmd) : "Robotul nu este conectat, nu pot schimba modul.";
+      if (speak && sent) await speakOnRobot(reply);
+      void saveChatMemory(lastUserMsg, reply);
+      return NextResponse.json({ reply, provider: "robot", model: "motor-control" });
     }
 
     const memoryContext = await buildMemoryContext();

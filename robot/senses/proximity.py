@@ -24,8 +24,11 @@ class ProximitySensors:
         self._threads: list = []
         self._lock = threading.Lock()
 
+        self._enabled = getattr(config, "US_ENABLED", True)
         self._has_gpio = False
-        if HAS_GPIO:
+        if not self._enabled:
+            logger.warning("Senzori ultrasonici DEZACTIVATI (US_ENABLED=0) - fara busy-wait")
+        elif HAS_GPIO:
             try:
                 GPIO.setmode(GPIO.BCM)
                 GPIO.setwarnings(False)
@@ -41,6 +44,8 @@ class ProximitySensors:
             logger.warning("Mod simulare senzori")
 
     def _read_distance(self, trig: int, echo: int) -> float:
+        if not self._enabled:
+            return 999.0  # senzori dezactivati -> mereu "liber"
         if not self._has_gpio:
             import random
 
@@ -78,6 +83,9 @@ class ProximitySensors:
             time.sleep(0.1)
 
     def start(self):
+        if not self._enabled:
+            logger.info("Loop senzori sarit (US_ENABLED=0)")
+            return
         self._running = True
         for name, (trig, echo) in SENSORS.items():
             t = threading.Thread(
