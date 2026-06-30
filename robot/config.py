@@ -123,9 +123,20 @@ YOLO_CONFIDENCE = 0.5
 CAMERA_JPEG_QUALITY = int(os.getenv("CAMERA_JPEG_QUALITY", "50"))
 CAMERA_STREAM_FPS = int(os.getenv("CAMERA_STREAM_FPS", "2"))
 SENSOR_INTERVAL_SEC = float(os.getenv("SENSOR_INTERVAL_SEC", "0.5"))
-# Senzori ultrasonici: pune US_ENABLED=0 in .env cat timp NU sunt conectati.
-# Altfel thread-urile fac busy-wait pe ECHO flotant -> CPU la maxim, lag retea.
+# Senzori ultrasonici HC-SR04
+# US_ENABLED=0  -> dezactiveaza tot (fara thread-uri, fara busy-wait)
+# US_ACTIVE     -> lista virgula: front,left,right,back  sau "all"
+# Exemplu doar fata montata: US_ENABLED=1 si US_ACTIVE=front
 US_ENABLED = os.getenv("US_ENABLED", "1") == "1"
+_us_active_raw = os.getenv("US_ACTIVE", "").strip().lower()
+if _us_active_raw == "all":
+    US_ACTIVE = frozenset({"front", "left", "right", "back"})
+elif _us_active_raw in ("", "none"):
+    US_ACTIVE = frozenset({"front", "left", "right", "back"}) if US_ENABLED else frozenset()
+else:
+    US_ACTIVE = frozenset(
+        s.strip() for s in _us_active_raw.split(",") if s.strip() in ("front", "left", "right", "back")
+    )
 
 # Navigation
 OBSTACLE_DISTANCE_CM = 25
