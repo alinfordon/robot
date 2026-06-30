@@ -47,33 +47,54 @@ class ProximitySensors:
         else:
             logger.warning("Mod simulare senzori")
 
+    def _pulse_us(self, seconds: float):
+        """Busy-wait scurt (time.sleep e prea imprecis pentru TRIG 10-20us)."""
+        end = time.perf_counter() + seconds
+        while time.perf_counter() < end:
+            pass
+
+    def _read_distance_once(self, trig: int, echo: int) -> float:
+        # Asteapta ECHO idle (LOW) — HC-SR04 nu raspunde daca inca e HIGH
+        deadline = time.perf_counter() + 0.05
+        while GPIO.input(echo) == GPIO.HIGH:
+            if time.perf_counter() > deadline:
+                break
+            self._pulse_us(0.00005)
+
+        GPIO.output(trig, GPIO.LOW)
+        self._pulse_us(0.000002)
+        GPIO.output(trig, GPIO.HIGH)
+        self._pulse_us(0.000015)  # 15 µs
+        GPIO.output(trig, GPIO.LOW)
+
+        # Asteapta frontiera LOW->HIGH (max ~30 ms pentru 5 m)
+        deadline = time.perf_counter() + 0.1
+        while GPIO.input(echo) == GPIO.LOW:
+            if time.perf_counter() > deadline:
+                return 999.0
+
+        pulse_start = time.perf_counter()
+        deadline = pulse_start + 0.03
+        while GPIO.input(echo) == GPIO.HIGH:
+            if time.perf_counter() > deadline:
+                return 999.0
+
+        pulse_end = time.perf_counter()
+        duration = pulse_end - pulse_start
+        if duration <= 0:
+            return 999.0
+        return round(duration * 17150, 1)
+
     def _read_distance(self, trig: int, echo: int) -> float:
         if not self._has_gpio:
             return 999.0
 
-        GPIO.output(trig, GPIO.HIGH)
-        time.sleep(0.00001)
-        GPIO.output(trig, GPIO.LOW)
-
-        timeout = time.time() + 0.03
-        pulse_start = time.time()
-        while GPIO.input(echo) == 0:
-            if time.time() > timeout:
-                return 999.0
-            pulse_start = time.time()
-
-        timeout = time.time() + 0.03
-        pulse_end = time.time()
-        while GPIO.input(echo) == 1:
-            if time.time() > timeout:
-                return 999.0
-            pulse_end = time.time()
-
-        try:
-            duration = pulse_end - pulse_start
-            return round(duration * 17150, 1)
-        except Exception:
-            return 999.0
+        for _ in range(3):
+            dist = self._read_distance_once(trig, echo)
+            if dist < 999:
+                return dist
+            time.sleep(0.02)
+        return 999.0
 
     def _sensor_loop(self, name: str, trig: int, echo: int):
         while self._running:
