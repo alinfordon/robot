@@ -15,6 +15,7 @@ import {
   WsMessage,
 } from "../app/types/robot";
 import { recordEvent, recordObservation, createTask, markTaskDone, markTaskSent, handleVisionEvents, shouldReactToPerson } from "../lib/memory/store";
+import { parseSensorsPayload } from "../lib/sensors/parse";
 import { getPeopleWithEncodings, handlePersonIdentification } from "../lib/people/store";
 import { identifyPersonInFrame, isFaceRecognitionEnabled } from "../lib/vision/face";
 import { isVisionOnPcEnabled, processCameraFrame } from "../lib/vision/processor";
@@ -145,12 +146,15 @@ class RobotBridge {
     this.robotStatus.lastSeen = new Date();
 
     switch (msg.type) {
-      case "SENSORS":
-        this.robotStatus.sensors = msg.payload as unknown as SensorData;
-        if (this.isObstacleNear(this.robotStatus.sensors)) {
+      case "SENSORS": {
+        const { sensors, meta } = parseSensorsPayload(msg.payload);
+        this.robotStatus.sensors = sensors;
+        this.robotStatus.sensorMeta = meta;
+        if (this.isObstacleNear(sensors)) {
           this.robotStatus.mood = "alert";
         }
         break;
+      }
       case "DETECTED_OBJECTS":
         this.robotStatus.objects = (msg.payload.objects as DetectedObject[]) || [];
         break;

@@ -1,22 +1,31 @@
 "use client";
 
-import { SensorData } from "@/app/types/robot";
+import { SensorData, SensorMeta, UltrasonicId } from "@/app/types/robot";
 
 interface RobotMapProps {
   sensors: SensorData;
+  meta: SensorMeta;
 }
 
-export default function RobotMap({ sensors }: RobotMapProps) {
-  const obstacles: { x: number; y: number; label: string }[] = [];
-  const scale = 1.2;
+const DIRECTIONS: { key: UltrasonicId; x: number; y: number; label: string }[] = [
+  { key: "front", x: 0, y: -1, label: "F" },
+  { key: "left", x: -1, y: 0, label: "L" },
+  { key: "right", x: 1, y: 0, label: "R" },
+  { key: "back", x: 0, y: 1, label: "B" },
+];
 
-  if (sensors.front_center < 80) obstacles.push({ x: 0, y: -sensors.front_center * scale, label: "F" });
-  if (sensors.front_left < 80) obstacles.push({ x: -30, y: -sensors.front_left * scale * 0.7, label: "FL" });
-  if (sensors.front_right < 80) obstacles.push({ x: 30, y: -sensors.front_right * scale * 0.7, label: "FR" });
-  if (sensors.left < 80) obstacles.push({ x: -sensors.left * scale, y: 0, label: "L" });
-  if (sensors.right < 80) obstacles.push({ x: sensors.right * scale, y: 0, label: "R" });
-  if (sensors.back_left < 80) obstacles.push({ x: -25, y: sensors.back_left * scale * 0.7, label: "BL" });
-  if (sensors.back_right < 80) obstacles.push({ x: 25, y: sensors.back_right * scale * 0.7, label: "BR" });
+export default function RobotMap({ sensors, meta }: RobotMapProps) {
+  const activeSet = new Set(meta.active);
+  const scale = 1.2;
+  const obstacles: { x: number; y: number; label: string }[] = [];
+
+  for (const { key, x, y, label } of DIRECTIONS) {
+    if (!activeSet.has(key)) continue;
+    const d = sensors[key];
+    if (d > 0 && d < 80) {
+      obstacles.push({ x: x * d * scale * 0.55, y: y * d * scale * 0.55, label });
+    }
+  }
 
   return (
     <div className="panel" style={{ marginTop: 8 }}>
@@ -29,7 +38,9 @@ export default function RobotMap({ sensors }: RobotMapProps) {
         {obstacles.map((o, i) => (
           <g key={i}>
             <circle cx={o.x} cy={-o.y} r="6" fill="var(--danger)" opacity={0.7} />
-            <text x={o.x} y={-o.y + 3} textAnchor="middle" fill="#fff" fontSize="6">{o.label}</text>
+            <text x={o.x} y={-o.y + 3} textAnchor="middle" fill="#fff" fontSize="6">
+              {o.label}
+            </text>
           </g>
         ))}
       </svg>

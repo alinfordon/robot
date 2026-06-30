@@ -399,7 +399,14 @@ class RoboV1:
         while self._running:
             readings = self.proximity.get_readings()
             if self.ws and self.ws.connected:
-                self.ws.send("SENSORS", readings)
+                self.ws.send(
+                    "SENSORS",
+                    {
+                        **readings,
+                        "active": self.proximity.active_names(),
+                        "hardware": self.proximity.has_hardware(),
+                    },
+                )
 
                 if self.proximity.has_obstacle_ahead():
                     self.ctx.mood = Mood.ALERT

@@ -47,6 +47,12 @@ class ProximitySensors:
         else:
             logger.warning("Mod simulare senzori")
 
+    def has_hardware(self) -> bool:
+        return self._has_gpio
+
+    def active_names(self) -> list:
+        return sorted(self._active)
+
     def _pulse_us(self, seconds: float):
         """Busy-wait scurt (time.sleep e prea imprecis pentru TRIG 10-20us)."""
         end = time.perf_counter() + seconds

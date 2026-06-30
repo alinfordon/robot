@@ -11,9 +11,11 @@ import {
   RobotState,
   RobotStatus,
   SensorData,
+  SensorMeta,
   SystemMetrics,
   WsMessage,
 } from "@/app/types/robot";
+import { parseSensorsPayload } from "@/lib/sensors/parse";
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
 
@@ -42,7 +44,7 @@ type WsAction =
   | { type: "CONNECTED" }
   | { type: "DISCONNECTED" }
   | { type: "UPDATE_STATUS"; payload: Partial<RobotStatus> }
-  | { type: "SENSORS"; payload: SensorData }
+  | { type: "SENSORS"; payload: { sensors: SensorData; meta: SensorMeta } }
   | { type: "OBJECTS"; payload: DetectedObject[] }
   | { type: "STATE"; payload: { state?: RobotState; mood?: Mood; mode?: RobotMode } }
   | { type: "SYSTEM"; payload: SystemMetrics & { uptime?: number } }
@@ -96,7 +98,8 @@ function reducer(state: WsState, action: WsAction): WsState {
         ...state,
         robotStatus: {
           ...state.robotStatus,
-          sensors: action.payload,
+          sensors: action.payload.sensors,
+          sensorMeta: action.payload.meta,
           lastSeen: new Date(),
         },
       };
@@ -259,9 +262,11 @@ export function useWebSocket() {
       case "ROBOT_DISCONNECTED":
         dispatch({ type: "UPDATE_STATUS", payload: { connected: false } });
         break;
-      case "SENSORS":
-        dispatch({ type: "SENSORS", payload: msg.payload as unknown as SensorData });
+      case "SENSORS": {
+        const parsed = parseSensorsPayload(msg.payload as Record<string, unknown>);
+        dispatch({ type: "SENSORS", payload: parsed });
         break;
+      }
       case "DETECTED_OBJECTS":
         dispatch({
           type: "OBJECTS",

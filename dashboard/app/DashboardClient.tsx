@@ -253,8 +253,12 @@ export default function DashboardClient() {
                   <PersonEnrollPanel frame={robot.cameraFrame} objects={robot.robotStatus.objects} />
                 </div>
                 <div className="monitor-sensors">
-                  <SensorPanel sensors={robot.robotStatus.sensors} />
-                  <RobotMap sensors={robot.robotStatus.sensors} />
+                  <SensorPanel
+                    sensors={robot.robotStatus.sensors}
+                    meta={robot.robotStatus.sensorMeta}
+                    connected={robot.robotStatus.connected}
+                  />
+                  <RobotMap sensors={robot.robotStatus.sensors} meta={robot.robotStatus.sensorMeta} />
                 </div>
               </div>
             )}
@@ -318,8 +322,12 @@ export default function DashboardClient() {
               <PersonEnrollPanel frame={robot.cameraFrame} objects={robot.robotStatus.objects} />
             </div>
             <div style={{ marginTop: 12 }}>
-              <SensorPanel sensors={robot.robotStatus.sensors} />
-              <RobotMap sensors={robot.robotStatus.sensors} />
+              <SensorPanel
+                sensors={robot.robotStatus.sensors}
+                meta={robot.robotStatus.sensorMeta}
+                connected={robot.robotStatus.connected}
+              />
+              <RobotMap sensors={robot.robotStatus.sensors} meta={robot.robotStatus.sensorMeta} />
             </div>
           </>
         )}

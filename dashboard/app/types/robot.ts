@@ -19,14 +19,19 @@ export type Provider = "ollama" | "anthropic" | "google";
 export type OllamaModelMode = "chat" | "control" | "auto";
 export type LogLevel = "info" | "warn" | "error";
 
+export type UltrasonicId = "front" | "left" | "right" | "back";
+
 export interface SensorData {
-  front_left: number;
-  front_center: number;
-  front_right: number;
+  front: number;
   left: number;
   right: number;
-  back_left: number;
-  back_right: number;
+  back: number;
+}
+
+/** Care senzori sunt configurati activ pe robot (US_ACTIVE) + daca GPIO e OK. */
+export interface SensorMeta {
+  active: UltrasonicId[];
+  hardware: boolean;
 }
 
 export interface DetectedObject {
@@ -48,6 +53,7 @@ export interface RobotStatus {
   mood: Mood;
   mode: RobotMode;
   sensors: SensorData;
+  sensorMeta: SensorMeta;
   objects: DetectedObject[];
   metrics: SystemMetrics;
   lastSeen: Date | null;
@@ -85,13 +91,15 @@ export interface LogEntry {
 }
 
 export const DEFAULT_SENSORS: SensorData = {
-  front_left: 999,
-  front_center: 999,
-  front_right: 999,
+  front: 999,
   left: 999,
   right: 999,
-  back_left: 999,
-  back_right: 999,
+  back: 999,
+};
+
+export const DEFAULT_SENSOR_META: SensorMeta = {
+  active: [],
+  hardware: false,
 };
 
 export const DEFAULT_METRICS: SystemMetrics = {
@@ -107,6 +115,7 @@ export const DEFAULT_ROBOT_STATUS: RobotStatus = {
   mood: "standby",
   mode: "manual",
   sensors: DEFAULT_SENSORS,
+  sensorMeta: DEFAULT_SENSOR_META,
   objects: [],
   metrics: DEFAULT_METRICS,
   lastSeen: null,

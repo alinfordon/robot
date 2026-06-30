@@ -27,7 +27,7 @@ function buildSystemPrompt(ctx?: RobotContext, memoryContext?: string): string {
   const objects = ctx?.objects?.map((o) => `${o.label} (${(o.confidence * 100).toFixed(0)}%)`).join(", ") || "nimic";
   const sensors = ctx?.sensors;
   const front = sensors
-    ? `stânga ${sensors.front_left}cm, centru ${sensors.front_center}cm, dreapta ${sensors.front_right}cm`
+    ? `față ${sensors.front}cm, stânga ${sensors.left}cm, dreapta ${sensors.right}cm, spate ${sensors.back}cm`
     : "necunoscut";
   const state = ctx?.state || "idle";
   const mode = ctx?.mode || "manual";
