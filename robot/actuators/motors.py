@@ -3,7 +3,7 @@ import time
 from typing import Callable, Optional
 
 import config
-from utils.gpio import GPIO, HAS_GPIO
+from utils.gpio import GPIO, HAS_GPIO, setup_pin
 from utils.logger import get_logger
 
 logger = get_logger("Motors")
@@ -24,8 +24,6 @@ class MotorController:
                 logger.warning("Init motoare esuat (%s) - mod simulare", exc)
 
     def _setup_gpio(self):
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setwarnings(False)
         pins = [
             config.MOTOR_LEFT_IN1,
             config.MOTOR_LEFT_IN2,
@@ -33,9 +31,9 @@ class MotorController:
             config.MOTOR_RIGHT_IN4,
         ]
         for pin in pins:
-            GPIO.setup(pin, GPIO.OUT)
-        GPIO.setup(config.MOTOR_LEFT_ENA, GPIO.OUT)
-        GPIO.setup(config.MOTOR_RIGHT_ENB, GPIO.OUT)
+            setup_pin(pin, GPIO.OUT, initial=GPIO.LOW)
+        setup_pin(config.MOTOR_LEFT_ENA, GPIO.OUT, initial=GPIO.LOW)
+        setup_pin(config.MOTOR_RIGHT_ENB, GPIO.OUT, initial=GPIO.LOW)
         self.pwm_left = GPIO.PWM(config.MOTOR_LEFT_ENA, config.MOTOR_PWM_FREQ)
         self.pwm_right = GPIO.PWM(config.MOTOR_RIGHT_ENB, config.MOTOR_PWM_FREQ)
         self.pwm_left.start(0)
@@ -177,4 +175,4 @@ class MotorController:
         if HAS_GPIO and self._initialized:
             self.pwm_left.stop()
             self.pwm_right.stop()
-            GPIO.cleanup()
+            self._initialized = False

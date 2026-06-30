@@ -19,6 +19,7 @@ from senses.hearing import HearingSystem
 from senses.proximity import ProximitySensors
 from senses.vision import VisionSystem
 from utils.logger import get_logger
+from utils.gpio import cleanup_all
 from utils.state import Mood, RobotContext, RobotMode, RobotState
 
 logger = get_logger("Main")
@@ -465,6 +466,7 @@ class RoboV1:
             self.vision.stop()
         if self.display:
             self.display.stop()
+        cleanup_all()
 
 
 async def main():

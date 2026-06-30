@@ -3,7 +3,7 @@ import time
 from typing import Callable, Dict, Optional, Tuple
 
 import config
-from utils.gpio import GPIO, HAS_GPIO
+from utils.gpio import GPIO, HAS_GPIO, cleanup_all, setup_pin
 from utils.logger import get_logger
 
 logger = get_logger("Proximity")
@@ -30,25 +30,26 @@ class ProximitySensors:
             logger.warning("Senzori ultrasonici DEZACTIVATI (US_ENABLED=0 sau US_ACTIVE=none)")
         elif HAS_GPIO:
             try:
-                GPIO.setmode(GPIO.BCM)
-                GPIO.setwarnings(False)
                 for name in self._active:
                     trig, echo = SENSORS[name]
-                    GPIO.setup(trig, GPIO.OUT)
-                    GPIO.setup(echo, GPIO.IN)
-                    GPIO.output(trig, GPIO.LOW)
+                    setup_pin(trig, GPIO.OUT, initial=GPIO.LOW)
+                    setup_pin(echo, GPIO.IN)
                 self._has_gpio = True
                 logger.info("HC-SR04 activi: %s", ", ".join(sorted(self._active)))
             except Exception as exc:
-                logger.warning("Init senzori esuat (%s) - mod simulare", exc)
+                logger.warning(
+                    "Init senzori esuat (%s) - verifica cablaj si ca robotul "
+                    "nu ruleaza deja (gpioinfo gpiochip4). Pinii fata: TRIG=%s ECHO=%s",
+                    exc,
+                    config.US_FRONT_TRIG,
+                    config.US_FRONT_ECHO,
+                )
         else:
             logger.warning("Mod simulare senzori")
 
     def _read_distance(self, trig: int, echo: int) -> float:
         if not self._has_gpio:
-            import random
-
-            return random.uniform(30, 120)
+            return 999.0
 
         GPIO.output(trig, GPIO.HIGH)
         time.sleep(0.00001)
@@ -84,6 +85,9 @@ class ProximitySensors:
     def start(self):
         if not self._active:
             logger.info("Loop senzori sarit (niciun senzor activ)")
+            return
+        if not self._has_gpio:
+            logger.error("Loop senzori sarit: GPIO neinitializat (citiri vor ramane 999)")
             return
         self._running = True
         for name in self._active:
@@ -121,5 +125,4 @@ class ProximitySensors:
 
     def cleanup(self):
         self.stop()
-        if self._has_gpio:
-            GPIO.cleanup()
+        # Pinii sunt eliberati la shutdown global (main -> cleanup_all)

@@ -1,7 +1,7 @@
 import asyncio
 
 import config
-from utils.gpio import GPIO, HAS_GPIO
+from utils.gpio import GPIO, HAS_GPIO, setup_pin
 from utils.logger import get_logger
 
 logger = get_logger("IR")
@@ -14,8 +14,7 @@ class InfraredEmitter:
         self._has_gpio = False
         if HAS_GPIO:
             try:
-                GPIO.setmode(GPIO.BCM)
-                GPIO.setup(config.IR_PIN, GPIO.OUT)
+                setup_pin(config.IR_PIN, GPIO.OUT, initial=GPIO.LOW)
                 self._has_gpio = True
                 logger.info("Emițător IR initializat")
             except Exception as exc:
@@ -41,5 +40,4 @@ class InfraredEmitter:
             logger.error(f"Eroare IR: {e}")
 
     def cleanup(self):
-        if self._has_gpio:
-            GPIO.cleanup(config.IR_PIN)
+        pass  # eliberare la shutdown global
