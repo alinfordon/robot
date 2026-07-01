@@ -47,23 +47,6 @@ export default function EncoderPanel({ encoders, meta, connected }: EncoderPanel
         </span>
       </div>
 
-      <div
-        style={{
-          textAlign: "center",
-          padding: "8px 0 12px",
-          borderBottom: "1px solid var(--border)",
-          marginBottom: 10,
-        }}
-      >
-        <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", marginBottom: 4 }}>
-          Viteză deplasare (medie)
-        </div>
-        <div style={{ fontSize: "1.75rem", fontFamily: "var(--font-mono)", color: "var(--accent)" }}>
-          {Math.abs(encoders.speed_cm_s).toFixed(1)}
-          <span style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}> cm/s</span>
-        </div>
-      </div>
-
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         {sides.map((side) => {
           const w = encoders[side];

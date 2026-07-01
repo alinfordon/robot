@@ -12,6 +12,7 @@ import PersonEnrollPanel from "@/app/components/PersonEnrollPanel";
 import MemoryPanel from "@/app/components/MemoryPanel";
 import SensorPanel from "@/app/components/SensorPanel";
 import EncoderPanel from "@/app/components/EncoderPanel";
+import SpeedGauge from "@/app/components/SpeedGauge";
 import RobotMap from "@/app/components/RobotMap";
 import ChatArea from "@/app/components/ChatArea";
 import MotorControl from "@/app/components/MotorControl";
@@ -260,10 +261,10 @@ export default function DashboardClient() {
                     connected={robot.robotStatus.connected}
                   />
                   <RobotMap sensors={robot.robotStatus.sensors} meta={robot.robotStatus.sensorMeta} />
-                  <EncoderPanel
-                    encoders={robot.robotStatus.encoders}
-                    meta={robot.robotStatus.encoderMeta}
+                  <SpeedGauge
+                    speedCmS={robot.robotStatus.encoders.speed_cm_s}
                     connected={robot.robotStatus.connected}
+                    meta={robot.robotStatus.encoderMeta}
                   />
                 </div>
               </div>
@@ -289,6 +290,11 @@ export default function DashboardClient() {
                   mode={robot.robotStatus.mode}
                   onMove={robot.move}
                   onSetMode={robot.setMode}
+                />
+                <EncoderPanel
+                  encoders={robot.robotStatus.encoders}
+                  meta={robot.robotStatus.encoderMeta}
+                  connected={robot.robotStatus.connected}
                 />
               </div>
             )}
@@ -334,10 +340,10 @@ export default function DashboardClient() {
                 connected={robot.robotStatus.connected}
               />
               <RobotMap sensors={robot.robotStatus.sensors} meta={robot.robotStatus.sensorMeta} />
-              <EncoderPanel
-                encoders={robot.robotStatus.encoders}
-                meta={robot.robotStatus.encoderMeta}
+              <SpeedGauge
+                speedCmS={robot.robotStatus.encoders.speed_cm_s}
                 connected={robot.robotStatus.connected}
+                meta={robot.robotStatus.encoderMeta}
               />
             </div>
           </>
@@ -356,7 +362,14 @@ export default function DashboardClient() {
         )}
         {mobileTab === "chat" && chatPanel}
         {mobileTab === "control" && (
-          <MotorControl mode={robot.robotStatus.mode} onMove={robot.move} onSetMode={robot.setMode} />
+          <>
+            <MotorControl mode={robot.robotStatus.mode} onMove={robot.move} onSetMode={robot.setMode} />
+            <EncoderPanel
+              encoders={robot.robotStatus.encoders}
+              meta={robot.robotStatus.encoderMeta}
+              connected={robot.robotStatus.connected}
+            />
+          </>
         )}
         {mobileTab === "logs" && <LogPanel logs={robot.logs} />}
       </main>
