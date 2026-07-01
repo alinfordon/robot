@@ -40,8 +40,8 @@ MOTOR_RIGHT_IN4 = 23
 MOTOR_RIGHT_ENB = 24
 MOTOR_PWM_FREQ = 1000
 
-ENCODER_LEFT = 20
-ENCODER_RIGHT = 16
+ENCODER_LEFT = _env_int("ENCODER_LEFT", 20)
+ENCODER_RIGHT = _env_int("ENCODER_RIGHT", 16)
 
 # ─── HC-SR04 × 4 ─────────────────────────────────
 # Față centru
@@ -169,6 +169,15 @@ ENCODER_PPR = _env_int("ENCODER_PPR", 20)
 ENCODER_WHEEL_DIAMETER_CM = _env_float("ENCODER_WHEEL_DIAMETER_CM", 6.5)
 ENCODER_SAMPLE_SEC = _env_float("ENCODER_SAMPLE_SEC", 0.5)
 ENCODER_POLL_SEC = _env_float("ENCODER_POLL_SEC", 0.002)
+# Front detectat: falling=LOW la gaura (OKY3278 tipic), rising=logic invers, both=orice tranzitie
+_encoder_edge_default = os.getenv("ENCODER_EDGE", "falling").strip().lower()
+if _encoder_edge_default not in ("falling", "rising", "both"):
+    _encoder_edge_default = "falling"
+ENCODER_EDGE = _encoder_edge_default
+_left_edge = os.getenv("ENCODER_EDGE_LEFT", ENCODER_EDGE).strip().lower()
+_right_edge = os.getenv("ENCODER_EDGE_RIGHT", ENCODER_EDGE).strip().lower()
+ENCODER_EDGE_LEFT = _left_edge if _left_edge in ("falling", "rising", "both") else ENCODER_EDGE
+ENCODER_EDGE_RIGHT = _right_edge if _right_edge in ("falling", "rising", "both") else ENCODER_EDGE
 
 # Navigation
 OBSTACLE_DISTANCE_CM = 25

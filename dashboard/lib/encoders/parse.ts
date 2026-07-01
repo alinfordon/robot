@@ -16,6 +16,8 @@ function wheel(raw: unknown): WheelEncoderReading {
     rpm: typeof o.rpm === "number" ? o.rpm : 0,
     cm_s: typeof o.cm_s === "number" ? o.cm_s : 0,
     pps: typeof o.pps === "number" ? o.pps : 0,
+    gpio: typeof o.gpio === "number" ? o.gpio : undefined,
+    level: typeof o.level === "boolean" ? o.level : o.level === null ? null : undefined,
   };
 }
 

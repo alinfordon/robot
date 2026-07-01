@@ -20,6 +20,21 @@ PINS: Dict[str, int] = {
     "right": config.ENCODER_RIGHT,
 }
 
+EDGE_MODES: Dict[str, str] = {
+    "left": getattr(config, "ENCODER_EDGE_LEFT", "falling"),
+    "right": getattr(config, "ENCODER_EDGE_RIGHT", "falling"),
+}
+
+
+def _edge_match(prev: int, cur: int, mode: str) -> bool:
+    if prev == cur:
+        return False
+    if mode == "both":
+        return True
+    if mode == "rising":
+        return prev == GPIO.LOW and cur == GPIO.HIGH
+    return prev == GPIO.HIGH and cur == GPIO.LOW
+
 
 class WheelEncoders:
     def __init__(self, motor_sign: Optional[Callable[[], Tuple[float, float]]] = None):
@@ -30,6 +45,7 @@ class WheelEncoders:
         self._lock = threading.Lock()
         self._poll_thread: Optional[threading.Thread] = None
         self._last_state: Dict[str, int] = {}
+        self._pin_level: Dict[str, int | None] = {"left": None, "right": None}
 
         self._left_total = 0
         self._right_total = 0
@@ -50,7 +66,16 @@ class WheelEncoders:
                 for side in self._active:
                     pin = PINS[side]
                     setup_pin(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                    self._last_state[side] = GPIO.input(pin)
+                    level = GPIO.input(pin)
+                    self._last_state[side] = level
+                    self._pin_level[side] = level
+                    logger.info(
+                        "Encoder %s GPIO%s init=%s edge=%s",
+                        side,
+                        pin,
+                        "HIGH" if level else "LOW",
+                        EDGE_MODES.get(side, "falling"),
+                    )
                 self._has_gpio = True
                 logger.info(
                     "Encodere OKY3278 activi: %s (PPR=%s, D=%scm)",
@@ -66,9 +91,10 @@ class WheelEncoders:
             cur = GPIO.input(pin)
         except Exception:
             return
+        self._pin_level[side] = cur
         prev = self._last_state.get(side, cur)
-        # OKY3278 / LM393: impuls LOW cand gaura trece (beam intrerupt)
-        if prev == GPIO.HIGH and cur == GPIO.LOW:
+        mode = EDGE_MODES.get(side, "falling")
+        if _edge_match(prev, cur, mode):
             with self._lock:
                 if side == "left":
                     self._left_total += 1
@@ -139,21 +165,26 @@ class WheelEncoders:
     def stop(self):
         self._running = False
 
+    def _wheel_payload(self, side: str, total: int, rpm: float, cm_s: float, pps: float) -> dict:
+        level = self._pin_level.get(side)
+        return {
+            "pulses": total,
+            "rpm": round(rpm, 1),
+            "cm_s": round(cm_s, 1),
+            "pps": round(pps, 1),
+            "gpio": PINS[side],
+            "level": None if level is None else bool(level),
+        }
+
     def get_snapshot(self) -> dict:
         with self._lock:
             return {
-                "left": {
-                    "pulses": self._left_total,
-                    "rpm": round(self._left_rpm, 1),
-                    "cm_s": round(self._left_cm_s, 1),
-                    "pps": round(self._left_pps, 1),
-                },
-                "right": {
-                    "pulses": self._right_total,
-                    "rpm": round(self._right_rpm, 1),
-                    "cm_s": round(self._right_cm_s, 1),
-                    "pps": round(self._right_pps, 1),
-                },
+                "left": self._wheel_payload(
+                    "left", self._left_total, self._left_rpm, self._left_cm_s, self._left_pps
+                ),
+                "right": self._wheel_payload(
+                    "right", self._right_total, self._right_rpm, self._right_cm_s, self._right_pps
+                ),
                 "speed_cm_s": round(self._speed_cm_s, 1),
                 "active": self.active_names(),
                 "hardware": self._has_gpio,

@@ -26,6 +26,8 @@ export interface WheelEncoderReading {
   rpm: number;
   cm_s: number;
   pps: number;
+  gpio?: number;
+  level?: boolean | null;
 }
 
 export interface EncoderData {

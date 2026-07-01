@@ -90,6 +90,13 @@ export default function EncoderPanel({ encoders, meta, connected }: EncoderPanel
                 <div>{active ? `${w.cm_s.toFixed(1)} cm/s` : "neconectat"}</div>
                 <div>{active ? `${w.pps.toFixed(1)} imp/s` : ""}</div>
                 <div>{active ? `${w.pulses} impulsuri` : ""}</div>
+                {active && w.gpio != null && (
+                  <div>
+                    GPIO{w.gpio}
+                    {w.level === true ? " · HIGH" : w.level === false ? " · LOW" : ""}
+                    {w.level === false && w.pulses === 0 ? " (blocat?)" : ""}
+                  </div>
+                )}
               </div>
             </div>
           );
