@@ -11,6 +11,7 @@ import CameraFeed from "@/app/components/CameraFeed";
 import PersonEnrollPanel from "@/app/components/PersonEnrollPanel";
 import MemoryPanel from "@/app/components/MemoryPanel";
 import SensorPanel from "@/app/components/SensorPanel";
+import EncoderPanel from "@/app/components/EncoderPanel";
 import RobotMap from "@/app/components/RobotMap";
 import ChatArea from "@/app/components/ChatArea";
 import MotorControl from "@/app/components/MotorControl";
@@ -259,6 +260,11 @@ export default function DashboardClient() {
                     connected={robot.robotStatus.connected}
                   />
                   <RobotMap sensors={robot.robotStatus.sensors} meta={robot.robotStatus.sensorMeta} />
+                  <EncoderPanel
+                    encoders={robot.robotStatus.encoders}
+                    meta={robot.robotStatus.encoderMeta}
+                    connected={robot.robotStatus.connected}
+                  />
                 </div>
               </div>
             )}
@@ -328,6 +334,11 @@ export default function DashboardClient() {
                 connected={robot.robotStatus.connected}
               />
               <RobotMap sensors={robot.robotStatus.sensors} meta={robot.robotStatus.sensorMeta} />
+              <EncoderPanel
+                encoders={robot.robotStatus.encoders}
+                meta={robot.robotStatus.encoderMeta}
+                connected={robot.robotStatus.connected}
+              />
             </div>
           </>
         )}

@@ -138,6 +138,22 @@ else:
         s.strip() for s in _us_active_raw.split(",") if s.strip() in ("front", "left", "right", "back")
     )
 
+# Encodere viteza OKY3278 (photo interrupter, OUT digital per roata)
+# ENCODER_ACTIVE=left,right  |  ENCODER_PPR = gauri pe disc (ex. 20)
+ENCODER_ENABLED = os.getenv("ENCODER_ENABLED", "1") == "1"
+_enc_active_raw = os.getenv("ENCODER_ACTIVE", "left,right").strip().lower()
+if _enc_active_raw == "all":
+    ENCODER_ACTIVE = frozenset({"left", "right"})
+elif _enc_active_raw in ("", "none"):
+    ENCODER_ACTIVE = frozenset({"left", "right"}) if ENCODER_ENABLED else frozenset()
+else:
+    ENCODER_ACTIVE = frozenset(
+        s.strip() for s in _enc_active_raw.split(",") if s.strip() in ("left", "right")
+    )
+ENCODER_PPR = int(os.getenv("ENCODER_PPR", "20"))
+ENCODER_WHEEL_DIAMETER_CM = float(os.getenv("ENCODER_WHEEL_DIAMETER_CM", "6.5"))
+ENCODER_SAMPLE_SEC = float(os.getenv("ENCODER_SAMPLE_SEC", "0.5"))
+
 # Navigation
 OBSTACLE_DISTANCE_CM = 25
 MOTOR_SPEED_DEFAULT = 65

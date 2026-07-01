@@ -19,6 +19,27 @@ export type Provider = "ollama" | "anthropic" | "google";
 export type OllamaModelMode = "chat" | "control" | "auto";
 export type LogLevel = "info" | "warn" | "error";
 
+export type WheelSide = "left" | "right";
+
+export interface WheelEncoderReading {
+  pulses: number;
+  rpm: number;
+  cm_s: number;
+  pps: number;
+}
+
+export interface EncoderData {
+  left: WheelEncoderReading;
+  right: WheelEncoderReading;
+  speed_cm_s: number;
+}
+
+export interface EncoderMeta {
+  active: WheelSide[];
+  hardware: boolean;
+  ppr: number;
+}
+
 export type UltrasonicId = "front" | "left" | "right" | "back";
 
 export interface SensorData {
@@ -54,6 +75,8 @@ export interface RobotStatus {
   mode: RobotMode;
   sensors: SensorData;
   sensorMeta: SensorMeta;
+  encoders: EncoderData;
+  encoderMeta: EncoderMeta;
   objects: DetectedObject[];
   metrics: SystemMetrics;
   lastSeen: Date | null;
@@ -102,6 +125,18 @@ export const DEFAULT_SENSOR_META: SensorMeta = {
   hardware: false,
 };
 
+export const DEFAULT_ENCODER_DATA: EncoderData = {
+  left: { pulses: 0, rpm: 0, cm_s: 0, pps: 0 },
+  right: { pulses: 0, rpm: 0, cm_s: 0, pps: 0 },
+  speed_cm_s: 0,
+};
+
+export const DEFAULT_ENCODER_META: EncoderMeta = {
+  active: [],
+  hardware: false,
+  ppr: 20,
+};
+
 export const DEFAULT_METRICS: SystemMetrics = {
   cpu: 0,
   ram: 0,
@@ -116,6 +151,8 @@ export const DEFAULT_ROBOT_STATUS: RobotStatus = {
   mode: "manual",
   sensors: DEFAULT_SENSORS,
   sensorMeta: DEFAULT_SENSOR_META,
+  encoders: DEFAULT_ENCODER_DATA,
+  encoderMeta: DEFAULT_ENCODER_META,
   objects: [],
   metrics: DEFAULT_METRICS,
   lastSeen: null,

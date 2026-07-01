@@ -16,6 +16,7 @@ import {
 } from "../app/types/robot";
 import { recordEvent, recordObservation, createTask, markTaskDone, markTaskSent, handleVisionEvents, shouldReactToPerson } from "../lib/memory/store";
 import { parseSensorsPayload } from "../lib/sensors/parse";
+import { parseEncodersPayload } from "../lib/encoders/parse";
 import { getPeopleWithEncodings, handlePersonIdentification } from "../lib/people/store";
 import { identifyPersonInFrame, isFaceRecognitionEnabled } from "../lib/vision/face";
 import { isVisionOnPcEnabled, processCameraFrame } from "../lib/vision/processor";
@@ -153,6 +154,12 @@ class RobotBridge {
         if (this.isObstacleNear(sensors)) {
           this.robotStatus.mood = "alert";
         }
+        break;
+      }
+      case "ENCODERS": {
+        const { encoders, meta } = parseEncodersPayload(msg.payload);
+        this.robotStatus.encoders = encoders;
+        this.robotStatus.encoderMeta = meta;
         break;
       }
       case "DETECTED_OBJECTS":

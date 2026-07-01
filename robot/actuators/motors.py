@@ -170,6 +170,18 @@ class MotorController:
         speed = speed or config.MOTOR_SPEED_DEFAULT
         return self.smooth_move("spin_right", speed)
 
+    def wheel_signs(self) -> tuple[float, float]:
+        """Semn directie roata din comanda motor (-1, 0, +1)."""
+        with self._lock:
+            def _sign(v: float) -> float:
+                if v > 0:
+                    return 1.0
+                if v < 0:
+                    return -1.0
+                return 0.0
+
+            return _sign(self._left_speed), _sign(self._right_speed)
+
     def cleanup(self):
         self.stop()
         if HAS_GPIO and self._initialized:

@@ -15,6 +15,7 @@ from brain.llm_client import ask
 from brain.router import VoiceRouter
 from brain.translator import Translator
 from comms.ws_client import RobotWSClient
+from senses.encoders import WheelEncoders
 from senses.hearing import HearingSystem
 from senses.proximity import ProximitySensors
 from senses.vision import VisionSystem
@@ -30,6 +31,7 @@ class RoboV1:
         self.ctx = RobotContext()
         self.proximity = ProximitySensors()
         self.motors = MotorController(proximity_check=self.proximity.is_clear)
+        self.encoders = WheelEncoders(motor_sign=self.motors.wheel_signs)
         self.speaker = Speaker()
         self.infrared = InfraredEmitter()
         self.display: RobotDisplay | None = None
@@ -51,6 +53,7 @@ class RoboV1:
     async def start(self):
         logger.info("ROBO_V1 porneste...")
         self.proximity.start()
+        self.encoders.start()
 
         self.ws = RobotWSClient(config.WS_URL, self.handle_command)
         self.vision = VisionSystem(
@@ -71,6 +74,7 @@ class RoboV1:
         tasks = [
             asyncio.create_task(self.ws.connect()),
             asyncio.create_task(self._sensor_loop()),
+            asyncio.create_task(self._encoder_loop()),
             asyncio.create_task(self.vision.run_loop()),
             asyncio.create_task(self._system_monitor_loop()),
             asyncio.create_task(self._navigation_loop()),
@@ -414,6 +418,13 @@ class RoboV1:
 
             await asyncio.sleep(config.SENSOR_INTERVAL_SEC)
 
+    async def _encoder_loop(self):
+        interval = getattr(config, "ENCODER_SAMPLE_SEC", 0.5)
+        while self._running:
+            if self.ws and self.ws.connected:
+                self.ws.send("ENCODERS", self.encoders.get_snapshot())
+            await asyncio.sleep(interval)
+
     async def _system_monitor_loop(self):
         while self._running:
             try:
@@ -467,6 +478,7 @@ class RoboV1:
         logger.info("Oprire ROBO_V1...")
         self._running = False
         self.proximity.cleanup()
+        self.encoders.cleanup()
         self.motors.cleanup()
         self.infrared.cleanup()
         if self.vision:
