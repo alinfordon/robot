@@ -6,8 +6,8 @@
 #   separat, apoi sincronizeaza DOAR codul in /home/robot,
 #   pastrand venv/, .env si models/ (care nu sunt in git).
 #
-# Utilizare:
-#   bash update.sh                # update + restart serviciu
+# Utilizare (din directorul aplicatie, de ex. /home/robot):
+#   cd /home/robot && bash update.sh
 #   BRANCH=dev bash update.sh     # alt branch
 #   RESTART=0 bash update.sh      # fara restart serviciu
 # ─────────────────────────────────────────────────────────────
@@ -83,6 +83,12 @@ if [ -f "$VENV/bin/activate" ]; then
     exit 1
   fi
   deactivate || true
+fi
+
+# 3c. Actualizeaza robot.service cu APP_DIR (fix cale veche /home/robot/robot)
+if [ -f "$APP_DIR/setup/06_autostart.sh" ]; then
+  echo "Actualizez robot.service -> $APP_DIR ..."
+  ROBOT_DIR="$APP_DIR" bash "$APP_DIR/setup/06_autostart.sh"
 fi
 
 # 4. Restart serviciu systemd (daca exista si RESTART=1)
