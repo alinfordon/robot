@@ -3,10 +3,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PC_HOST = os.getenv("PC_HOST", "192.168.0.216")
-PC_WS_PORT = int(os.getenv("PC_WS_PORT", "8081"))
-PC_HTTP_PORT = int(os.getenv("PC_HTTP_PORT", "3001"))
+PC_WS_PORT = _env_int("PC_WS_PORT", 8081)
+PC_HTTP_PORT = _env_int("PC_HTTP_PORT", 3001)
 WS_URL = f"ws://{PC_HOST}:{PC_WS_PORT}?role=robot"
 AI_URL = f"http://{PC_HOST}:{PC_HTTP_PORT}/api/chat"
 TRANSLATE_URL = f"http://{PC_HOST}:{PC_HTTP_PORT}/api/translate"
@@ -108,7 +123,7 @@ AUDIO_INPUT_DEVICE = _parse_audio_device(
     os.getenv("AUDIO_INPUT_DEVICE") or os.getenv("AUDIO_DEVICE_INDEX"),
     "default",
 )
-AUDIO_SAMPLERATE = int(os.getenv("AUDIO_SAMPLERATE", "16000"))
+AUDIO_SAMPLERATE = _env_int("AUDIO_SAMPLERATE", 16000)
 
 # Vision
 # remote = doar streaming cameră (YOLO pe PC); local = detectare pe Pi
@@ -116,13 +131,13 @@ VISION_MODE = os.getenv("VISION_MODE", "remote")
 YOLO_MODEL_PATH = os.getenv(
     "YOLO_MODEL_PATH", os.path.join(_BASE_DIR, "models/yolo/yolov8n_ncnn")
 )
-CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
-CAMERA_WIDTH = int(os.getenv("CAMERA_WIDTH", "320"))
-CAMERA_HEIGHT = int(os.getenv("CAMERA_HEIGHT", "240"))
+CAMERA_INDEX = _env_int("CAMERA_INDEX", 0)
+CAMERA_WIDTH = _env_int("CAMERA_WIDTH", 320)
+CAMERA_HEIGHT = _env_int("CAMERA_HEIGHT", 240)
 YOLO_CONFIDENCE = 0.5
-CAMERA_JPEG_QUALITY = int(os.getenv("CAMERA_JPEG_QUALITY", "50"))
-CAMERA_STREAM_FPS = int(os.getenv("CAMERA_STREAM_FPS", "2"))
-SENSOR_INTERVAL_SEC = float(os.getenv("SENSOR_INTERVAL_SEC", "0.5"))
+CAMERA_JPEG_QUALITY = _env_int("CAMERA_JPEG_QUALITY", 50)
+CAMERA_STREAM_FPS = _env_int("CAMERA_STREAM_FPS", 2)
+SENSOR_INTERVAL_SEC = _env_float("SENSOR_INTERVAL_SEC", 0.5)
 # Senzori ultrasonici HC-SR04
 # US_ENABLED=0  -> dezactiveaza tot (fara thread-uri, fara busy-wait)
 # US_ACTIVE     -> lista virgula: front,left,right,back  sau "all"
@@ -150,20 +165,6 @@ else:
     ENCODER_ACTIVE = frozenset(
         s.strip() for s in _enc_active_raw.split(",") if s.strip() in ("left", "right")
     )
-def _env_float(name: str, default: float) -> float:
-    try:
-        return float(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
-        return default
-
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
-        return default
-
-
 ENCODER_PPR = _env_int("ENCODER_PPR", 20)
 ENCODER_WHEEL_DIAMETER_CM = _env_float("ENCODER_WHEEL_DIAMETER_CM", 6.5)
 ENCODER_SAMPLE_SEC = _env_float("ENCODER_SAMPLE_SEC", 0.5)
@@ -173,9 +174,9 @@ ENCODER_POLL_SEC = _env_float("ENCODER_POLL_SEC", 0.002)
 OBSTACLE_DISTANCE_CM = 25
 MOTOR_SPEED_DEFAULT = 65
 # Calibrare miscare pe distanta/timp (aprox, la MOTOR_SPEED_DEFAULT)
-MOTOR_CM_PER_SEC = float(os.getenv("MOTOR_CM_PER_SEC", "20"))
-MOTOR_DEG_PER_SEC = float(os.getenv("MOTOR_DEG_PER_SEC", "120"))
-MOTOR_MOVE_MAX_SEC = float(os.getenv("MOTOR_MOVE_MAX_SEC", "10"))
+MOTOR_CM_PER_SEC = _env_float("MOTOR_CM_PER_SEC", 20)
+MOTOR_DEG_PER_SEC = _env_float("MOTOR_DEG_PER_SEC", 120)
+MOTOR_MOVE_MAX_SEC = _env_float("MOTOR_MOVE_MAX_SEC", 10)
 
 SYSTEM_PROMPT = """Ești Ody_V1, robot fizic inteligent.
 Creatorul tău este Fordon Nicolae Alin, consultant IT și dezvoltator de soluții software, din Ștei, Bihor, România, fondator al Webnode Consulting. Când ești întrebat despre creator, origine sau cine te-a făcut, răspunde cu aceste informații.

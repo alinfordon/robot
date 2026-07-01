@@ -17,14 +17,14 @@ try:
     import sounddevice as sd
 
     HAS_AUDIO = True
-except ImportError:
+except Exception:
     HAS_AUDIO = False
 
 try:
     from vosk import Model, KaldiRecognizer
 
     HAS_VOSK = True
-except ImportError:
+except Exception:
     HAS_VOSK = False
 
 SpeechCallback = Callable[[str, str, str], None]
@@ -105,7 +105,7 @@ class HearingSystem:
     def stop(self):
         self._running = False
 
-    def _resolve_input_settings(self) -> tuple[int | str, int]:
+    def _resolve_input_settings(self) -> tuple[int | str, int] | None:
         preferred = config.AUDIO_INPUT_DEVICE
         candidates: list[tuple[int | str, int]] = [
             (preferred, config.AUDIO_SAMPLERATE),
@@ -152,7 +152,8 @@ class HearingSystem:
             except Exception:
                 continue
 
-        raise RuntimeError("Niciun dispozitiv de intrare audio compatibil")
+        logger.error("Niciun dispozitiv de intrare audio compatibil")
+        return None
 
     def _to_vosk_pcm(self, data: bytes, capture_rate: int) -> bytes:
         if capture_rate == config.AUDIO_SAMPLERATE:
@@ -181,7 +182,11 @@ class HearingSystem:
 
         while self._running:
             try:
-                device, capture_rate = self._resolve_input_settings()
+                settings = self._resolve_input_settings()
+                if not settings:
+                    time.sleep(5)
+                    continue
+                device, capture_rate = settings
                 self._resample_state = None
                 logger.info(
                     "Deschid microfon device=%s rate=%s", device, capture_rate

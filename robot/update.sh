@@ -67,6 +67,24 @@ else
   echo "ATENTIE: venv lipseste la $VENV - ruleaza install.sh intai."
 fi
 
+# 3b. Verificare rapida import (prinde erori inainte de restart systemd)
+if [ -f "$VENV/bin/activate" ]; then
+  echo "Verific import config + main ..."
+  # shellcheck disable=SC1091
+  source "$VENV/bin/activate"
+  if ! python -c "import config; print('config OK')" 2>&1; then
+    echo "EROARE: config.py nu se poate importa — verifica .env si encoding."
+    deactivate || true
+    exit 1
+  fi
+  if ! python "$APP_DIR/test_startup.py" 2>&1; then
+    echo "EROARE: test_startup.py a esuat — vezi traceback mai sus."
+    deactivate || true
+    exit 1
+  fi
+  deactivate || true
+fi
+
 # 4. Restart serviciu systemd (daca exista si RESTART=1)
 if [ "$RESTART" = "1" ] && systemctl list-unit-files 2>/dev/null | grep -q '^robot.service'; then
   echo "Restart serviciu robot ..."

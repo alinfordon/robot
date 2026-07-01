@@ -13,14 +13,14 @@ try:
     import cv2
 
     HAS_CV = True
-except ImportError:
+except Exception:
     HAS_CV = False
 
 try:
     from ultralytics import YOLO
 
     HAS_YOLO = True
-except ImportError:
+except Exception:
     HAS_YOLO = False
 
 

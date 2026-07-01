@@ -5,23 +5,29 @@ import asyncio
 import signal
 import socket
 import sys
+import traceback
 
-import config
-from actuators.display import RobotDisplay
-from actuators.infrared import InfraredEmitter
-from actuators.motors import MotorController
-from actuators.speaker import Speaker
-from brain.llm_client import ask
-from brain.router import VoiceRouter
-from brain.translator import Translator
-from comms.ws_client import RobotWSClient
-from senses.encoders import WheelEncoders
-from senses.hearing import HearingSystem
-from senses.proximity import ProximitySensors
-from senses.vision import VisionSystem
-from utils.logger import get_logger
-from utils.gpio import cleanup_all
-from utils.state import Mood, RobotContext, RobotMode, RobotState
+try:
+    import config
+    from actuators.display import RobotDisplay
+    from actuators.infrared import InfraredEmitter
+    from actuators.motors import MotorController
+    from actuators.speaker import Speaker
+    from brain.llm_client import ask
+    from brain.router import VoiceRouter
+    from brain.translator import Translator
+    from comms.ws_client import RobotWSClient
+    from senses.encoders import WheelEncoders
+    from senses.hearing import HearingSystem
+    from senses.proximity import ProximitySensors
+    from senses.vision import VisionSystem
+    from utils.logger import get_logger
+    from utils.gpio import cleanup_all
+    from utils.state import Mood, RobotContext, RobotMode, RobotState
+except Exception:
+    print("ROBO_V1: import esuat la pornire", file=sys.stderr)
+    traceback.print_exc()
+    sys.exit(1)
 
 logger = get_logger("Main")
 
