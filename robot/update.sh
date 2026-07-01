@@ -55,6 +55,8 @@ rsync -a \
   --exclude '*.wav' \
   "$SRC_DIR/robot/" "$APP_DIR/"
 
+cd "$APP_DIR"
+
 # 3. Dependinte Python (daca s-a schimbat requirements.txt)
 if [ -f "$VENV/bin/activate" ]; then
   echo "Actualizez dependintele Python ..."
@@ -77,7 +79,7 @@ if [ -f "$VENV/bin/activate" ]; then
     deactivate || true
     exit 1
   fi
-  if ! python "$APP_DIR/test_startup.py" 2>&1; then
+  if ! python test_startup.py 2>&1; then
     echo "EROARE: test_startup.py a esuat — vezi traceback mai sus."
     deactivate || true
     exit 1
@@ -88,7 +90,7 @@ fi
 # 3c. Actualizeaza robot.service cu APP_DIR (fix cale veche /home/robot/robot)
 if [ -f "$APP_DIR/setup/06_autostart.sh" ]; then
   echo "Actualizez robot.service -> $APP_DIR ..."
-  ROBOT_DIR="$APP_DIR" bash "$APP_DIR/setup/06_autostart.sh"
+  ROBOT_DIR="$APP_DIR" bash setup/06_autostart.sh
 fi
 
 # 4. Restart serviciu systemd (daca exista si RESTART=1)
