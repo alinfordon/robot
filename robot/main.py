@@ -502,4 +502,10 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+    except Exception as exc:
+        logger.exception("ROBO_V1 oprit neasteptat: %s", exc)
+        sys.exit(1)

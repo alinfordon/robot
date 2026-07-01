@@ -150,9 +150,24 @@ else:
     ENCODER_ACTIVE = frozenset(
         s.strip() for s in _enc_active_raw.split(",") if s.strip() in ("left", "right")
     )
-ENCODER_PPR = int(os.getenv("ENCODER_PPR", "20"))
-ENCODER_WHEEL_DIAMETER_CM = float(os.getenv("ENCODER_WHEEL_DIAMETER_CM", "6.5"))
-ENCODER_SAMPLE_SEC = float(os.getenv("ENCODER_SAMPLE_SEC", "0.5"))
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+ENCODER_PPR = _env_int("ENCODER_PPR", 20)
+ENCODER_WHEEL_DIAMETER_CM = _env_float("ENCODER_WHEEL_DIAMETER_CM", 6.5)
+ENCODER_SAMPLE_SEC = _env_float("ENCODER_SAMPLE_SEC", 0.5)
+ENCODER_POLL_SEC = _env_float("ENCODER_POLL_SEC", 0.002)
 
 # Navigation
 OBSTACLE_DISTANCE_CM = 25

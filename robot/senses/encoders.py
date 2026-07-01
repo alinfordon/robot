@@ -1,6 +1,7 @@
 """Encodere viteza OKY3278 (photo interrupter IR) — un pin OUT per roata.
 
 Numara impulsuri (gauri disc) si calculeaza RPM + cm/s.
+Foloseste polling (fara add_event_detect) — stabil pe Pi 5 / rpi-lgpio.
 """
 
 import math
@@ -27,7 +28,8 @@ class WheelEncoders:
         self._has_gpio = False
         self._running = False
         self._lock = threading.Lock()
-        self._stats_thread: Optional[threading.Thread] = None
+        self._poll_thread: Optional[threading.Thread] = None
+        self._last_state: Dict[str, int] = {}
 
         self._left_total = 0
         self._right_total = 0
@@ -48,12 +50,7 @@ class WheelEncoders:
                 for side in self._active:
                     pin = PINS[side]
                     setup_pin(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                    GPIO.add_event_detect(
-                        pin,
-                        GPIO.FALLING,
-                        callback=self._make_callback(side),
-                        bouncetime=2,
-                    )
+                    self._last_state[side] = GPIO.input(pin)
                 self._has_gpio = True
                 logger.info(
                     "Encodere OKY3278 activi: %s (PPR=%s, D=%scm)",
@@ -64,8 +61,14 @@ class WheelEncoders:
             except Exception as exc:
                 logger.warning("Init encodere esuat (%s)", exc)
 
-    def _make_callback(self, side: str):
-        def _cb(channel):
+    def _count_edge(self, side: str, pin: int):
+        try:
+            cur = GPIO.input(pin)
+        except Exception:
+            return
+        prev = self._last_state.get(side, cur)
+        # OKY3278 / LM393: impuls LOW cand gaura trece (beam intrerupt)
+        if prev == GPIO.HIGH and cur == GPIO.LOW:
             with self._lock:
                 if side == "left":
                     self._left_total += 1
@@ -73,8 +76,22 @@ class WheelEncoders:
                 else:
                     self._right_total += 1
                     self._right_delta += 1
+        self._last_state[side] = cur
 
-        return _cb
+    def _poll_loop(self):
+        interval = max(0.001, float(getattr(config, "ENCODER_POLL_SEC", 0.002)))
+        stats_every = max(0.1, float(config.ENCODER_SAMPLE_SEC))
+        next_stats = time.monotonic() + stats_every
+
+        while self._running:
+            for side in self._active:
+                self._count_edge(side, PINS[side])
+            time.sleep(interval)
+
+            now = time.monotonic()
+            if now >= next_stats:
+                self._update_stats(stats_every)
+                next_stats = now + stats_every
 
     def has_hardware(self) -> bool:
         return self._has_gpio
@@ -90,46 +107,37 @@ class WheelEncoders:
         direction = sign if sign != 0 else 1.0
         return rpm_mag * direction, cm_s_mag * direction, pps
 
-    def _stats_loop(self):
-        interval = max(0.1, float(config.ENCODER_SAMPLE_SEC))
-        while self._running:
-            time.sleep(interval)
-            sign_l, sign_r = (1.0, 1.0)
-            if self.motor_sign:
-                try:
-                    sign_l, sign_r = self.motor_sign()
-                except Exception:
-                    pass
+    def _update_stats(self, interval: float):
+        sign_l, sign_r = (1.0, 1.0)
+        if self.motor_sign:
+            try:
+                sign_l, sign_r = self.motor_sign()
+            except Exception:
+                pass
 
-            with self._lock:
-                l_d, r_d = self._left_delta, self._right_delta
-                self._left_delta = 0
-                self._right_delta = 0
+        with self._lock:
+            l_d, r_d = self._left_delta, self._right_delta
+            self._left_delta = 0
+            self._right_delta = 0
 
-            l_rpm, l_cm, l_pps = self._wheel_stats(l_d, sign_l, interval)
-            r_rpm, r_cm, r_pps = self._wheel_stats(r_d, sign_r, interval)
+        l_rpm, l_cm, l_pps = self._wheel_stats(l_d, sign_l, interval)
+        r_rpm, r_cm, r_pps = self._wheel_stats(r_d, sign_r, interval)
 
-            with self._lock:
-                self._left_rpm, self._left_cm_s, self._left_pps = l_rpm, l_cm, l_pps
-                self._right_rpm, self._right_cm_s, self._right_pps = r_rpm, r_cm, r_pps
-                self._speed_cm_s = (l_cm + r_cm) / 2.0
+        with self._lock:
+            self._left_rpm, self._left_cm_s, self._left_pps = l_rpm, l_cm, l_pps
+            self._right_rpm, self._right_cm_s, self._right_pps = r_rpm, r_cm, r_pps
+            self._speed_cm_s = (l_cm + r_cm) / 2.0
 
     def start(self):
         if not self._active or not self._has_gpio:
             return
         self._running = True
-        self._stats_thread = threading.Thread(target=self._stats_loop, daemon=True)
-        self._stats_thread.start()
-        logger.info("Loop encodere pornit")
+        self._poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
+        self._poll_thread.start()
+        logger.info("Loop encodere pornit (polling)")
 
     def stop(self):
         self._running = False
-        if HAS_GPIO and self._has_gpio:
-            for side in self._active:
-                try:
-                    GPIO.remove_event_detect(PINS[side])
-                except Exception:
-                    pass
 
     def get_snapshot(self) -> dict:
         with self._lock:
