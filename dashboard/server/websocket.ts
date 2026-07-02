@@ -15,6 +15,7 @@ import {
   WsMessage,
 } from "../app/types/robot";
 import { recordEvent, recordObservation, createTask, markTaskDone, markTaskSent, handleVisionEvents, shouldReactToPerson } from "../lib/memory/store";
+import { getAiNavigateEnabled } from "../lib/settings/store";
 import { parseSensorsPayload } from "../lib/sensors/parse";
 import { parseEncodersPayload } from "../lib/encoders/parse";
 import { getPeopleWithEncodings, handlePersonIdentification } from "../lib/people/store";
@@ -54,6 +55,17 @@ class RobotBridge {
         this.robotClient = ws;
         this.robotStatus.connected = true;
         this.robotStatus.lastSeen = new Date();
+        void getAiNavigateEnabled()
+          .then((enabled) => {
+            this.robotStatus.aiNavigateEnabled = enabled;
+            this.sendToRobot("SET_AI_NAVIGATE", { enabled, source: "db_restore" }, { skipTask: true });
+            this.broadcastToBrowsers({
+              type: "AI_NAVIGATE",
+              payload: { enabled },
+              timestamp: Date.now(),
+            });
+          })
+          .catch((err) => console.warn("[Settings] AI navigate restore failed:", err));
         this.broadcastToBrowsers({
           type: "ROBOT_CONNECTED",
           payload: {},
@@ -77,6 +89,11 @@ class RobotBridge {
     });
 
     this.startHeartbeat();
+    void getAiNavigateEnabled()
+      .then((enabled) => {
+        this.robotStatus.aiNavigateEnabled = enabled;
+      })
+      .catch(() => {});
     this.httpServer.listen(WS_PORT, () => {
       console.log(`[WS] Robot bridge on ws://localhost:${WS_PORT}`);
       console.log(`[HTTP] Status API on http://localhost:${WS_PORT}/robot/status`);
@@ -169,6 +186,12 @@ class RobotBridge {
         if (msg.payload.state) this.robotStatus.state = msg.payload.state as RobotState;
         if (msg.payload.mood) this.robotStatus.mood = msg.payload.mood as Mood;
         if (msg.payload.mode) this.robotStatus.mode = msg.payload.mode as RobotMode;
+        if (msg.payload.aiNavigateEnabled !== undefined) {
+          this.robotStatus.aiNavigateEnabled = Boolean(msg.payload.aiNavigateEnabled);
+        }
+        break;
+      case "AI_NAVIGATE":
+        this.robotStatus.aiNavigateEnabled = Boolean(msg.payload.enabled);
         break;
       case "SYSTEM":
         this.robotStatus.metrics = msg.payload as unknown as SystemMetrics;

@@ -18,6 +18,10 @@ export function useRobot() {
     ws.sendCommand("SET_MODE", { mode });
   };
 
+  const setAiNavigate = async (enabled: boolean) => {
+    ws.dispatch({ type: "AI_NAVIGATE", payload: { enabled } });
+  };
+
   const setSpeed = (left: number, right: number) => {
     ws.sendCommand("SET_SPEED", { left, right });
   };
@@ -44,6 +48,7 @@ export function useRobot() {
     move,
     speak,
     setMode,
+    setAiNavigate,
     setSpeed,
     sendIR,
     reset,

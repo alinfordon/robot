@@ -16,6 +16,7 @@ import SpeedGauge from "@/app/components/SpeedGauge";
 import RobotMap from "@/app/components/RobotMap";
 import ChatArea from "@/app/components/ChatArea";
 import MotorControl from "@/app/components/MotorControl";
+import AiNavigatePanel from "@/app/components/AiNavigatePanel";
 import LogPanel from "@/app/components/LogPanel";
 import BilingualTranslator from "@/app/components/BilingualTranslator";
 import { useSpeechRecognition } from "@/app/hooks/useSpeechRecognition";
@@ -57,6 +58,17 @@ export default function DashboardClient() {
 
   const speechRecognition = useSpeechRecognition("ro-RO");
   const onTranslatorTab = desktopTab === "translator" || mobileTab === "translator";
+
+  useEffect(() => {
+    fetch("/api/settings/ai-navigate", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (typeof data.enabled === "boolean") {
+          robot.dispatch({ type: "AI_NAVIGATE", payload: { enabled: data.enabled } });
+        }
+      })
+      .catch(() => {});
+  }, [robot.dispatch]);
 
   useEffect(() => {
     if (!robot.robotStatus.connected || onTranslatorTab) return;
@@ -298,6 +310,11 @@ export default function DashboardClient() {
                   onMove={robot.move}
                   onSetMode={robot.setMode}
                 />
+                <AiNavigatePanel
+                  enabled={robot.robotStatus.aiNavigateEnabled}
+                  connected={robot.robotStatus.connected}
+                  onChange={robot.setAiNavigate}
+                />
                 <EncoderPanel
                   encoders={robot.robotStatus.encoders}
                   meta={robot.robotStatus.encoderMeta}
@@ -371,6 +388,11 @@ export default function DashboardClient() {
         {mobileTab === "control" && (
           <>
             <MotorControl mode={robot.robotStatus.mode} onMove={robot.move} onSetMode={robot.setMode} />
+            <AiNavigatePanel
+              enabled={robot.robotStatus.aiNavigateEnabled}
+              connected={robot.robotStatus.connected}
+              onChange={robot.setAiNavigate}
+            />
             <EncoderPanel
               encoders={robot.robotStatus.encoders}
               meta={robot.robotStatus.encoderMeta}

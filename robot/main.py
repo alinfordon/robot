@@ -15,6 +15,7 @@ try:
     from actuators.speaker import Speaker
     from brain.context import build_robot_context
     from brain.llm_client import ask
+    from brain.navigate import get_navigation_decision
     from brain.router import VoiceRouter
     from brain.translator import Translator
     from comms.ws_client import RobotWSClient
@@ -57,6 +58,7 @@ class RoboV1:
         self._chat_history: list = []
         self._running = True
         self._last_metrics: dict | None = None
+        self._ai_navigate_busy = False
 
     async def start(self):
         logger.info("ROBO_V1 porneste...")
@@ -86,6 +88,7 @@ class RoboV1:
             asyncio.create_task(self.vision.run_loop()),
             asyncio.create_task(self._system_monitor_loop()),
             asyncio.create_task(self._navigation_loop()),
+            asyncio.create_task(self._ai_navigation_loop()),
         ]
 
         if self.display:
@@ -265,6 +268,22 @@ class RoboV1:
             except ValueError:
                 pass
             self._send_state()
+
+        elif msg_type == "SET_AI_NAVIGATE":
+            enabled = bool(payload.get("enabled", False))
+            self.ctx.set_ai_navigate(enabled)
+            if not enabled:
+                await asyncio.to_thread(self.motors.stop)
+                self.ctx.set_state(RobotState.IDLE, Mood.STANDBY)
+            else:
+                self.ctx.mood = Mood.THINKING
+            logger.info("AI navigate: %s", "ON" if enabled else "OFF")
+            self._send_state()
+            if self.ws:
+                self.ws.send(
+                    "AI_NAVIGATE",
+                    {"enabled": enabled, "source": payload.get("source", "dashboard")},
+                )
 
         elif msg_type == "SET_SPEED":
             left = float(payload.get("left", 0))
@@ -469,8 +488,11 @@ class RoboV1:
             await asyncio.sleep(5)
 
     async def _navigation_loop(self):
-        """Autonomous obstacle avoidance when mode is auto or patrol."""
+        """Evitare obstacole rule-based (mod auto/patrol, fara AI navigate)."""
         while self._running:
+            if self.ctx.ai_navigate_enabled:
+                await asyncio.sleep(0.3)
+                continue
             if self.ctx.mode in (RobotMode.AUTO, RobotMode.PATROL):
                 if not self.proximity.is_clear("forward"):
                     self.ctx.set_state(RobotState.AVOIDING, Mood.ALERT)
@@ -487,9 +509,68 @@ class RoboV1:
                     await asyncio.sleep(0.3)
             await asyncio.sleep(0.2)
 
+    async def _ai_navigation_loop(self):
+        """Navigare continua ghidata de AI (senzori + Ollama pe PC)."""
+        interval = getattr(config, "AI_NAVIGATE_INTERVAL_SEC", 4.0)
+        move_ms = getattr(config, "AI_NAVIGATE_MOVE_MS", 1500)
+
+        while self._running:
+            if not self.ctx.ai_navigate_enabled:
+                await asyncio.sleep(0.5)
+                continue
+
+            if self._ai_navigate_busy:
+                await asyncio.sleep(0.2)
+                continue
+
+            self._ai_navigate_busy = True
+            try:
+                robot_context = build_robot_context(
+                    self.proximity,
+                    self.encoders,
+                    self.vision,
+                    self.ctx,
+                    self._last_metrics,
+                )
+                decision = await get_navigation_decision(robot_context)
+                direction = decision.get("direction", "stop")
+                reason = decision.get("reason", "")
+
+                logger.info("AI nav: %s — %s", direction, reason[:80])
+                if self.ws:
+                    self.ws.send(
+                        "LOG",
+                        {
+                            "level": "info",
+                            "message": f"AI nav: {direction} — {reason[:120]}",
+                            "module": "AiNav",
+                        },
+                    )
+
+                if direction == "stop":
+                    await asyncio.to_thread(self.motors.stop)
+                    self.ctx.set_state(RobotState.IDLE, Mood.STANDBY)
+                else:
+                    self.ctx.set_state(RobotState.MOVING, Mood.THINKING)
+                    await self._timed_move(
+                        direction,
+                        config.MOTOR_SPEED_DEFAULT,
+                        duration_ms=move_ms,
+                    )
+                    self.ctx.set_state(RobotState.IDLE, Mood.STANDBY)
+
+                self._send_state()
+            except Exception as exc:
+                logger.error("Loop AI navigate: %s", exc)
+            finally:
+                self._ai_navigate_busy = False
+
+            await asyncio.sleep(interval)
+
     def shutdown(self):
         logger.info("Oprire ROBO_V1...")
         self._running = False
+        self.ctx.set_ai_navigate(False)
         self.proximity.cleanup()
         self.encoders.cleanup()
         self.motors.cleanup()

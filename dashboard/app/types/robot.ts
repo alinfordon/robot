@@ -84,6 +84,7 @@ export interface RobotStatus {
   lastSeen: Date | null;
   cameraFps: number;
   uptime: number;
+  aiNavigateEnabled: boolean;
 }
 
 export interface Message {
@@ -160,4 +161,5 @@ export const DEFAULT_ROBOT_STATUS: RobotStatus = {
   lastSeen: null,
   cameraFps: 0,
   uptime: 0,
+  aiNavigateEnabled: false,
 };

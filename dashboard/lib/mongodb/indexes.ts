@@ -36,6 +36,7 @@ export async function ensureIndexes(db: Db): Promise<void> {
       { key: { tags: 1 } },
       { key: { roomId: 1, ts: -1 } },
     ]),
+    db.collection(COLLECTIONS.settings).createIndexes([{ key: { _id: 1 }, unique: true }]),
   ]);
 
   console.log("[MongoDB] Indexes ready");

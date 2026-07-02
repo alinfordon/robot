@@ -50,7 +50,8 @@ type WsAction =
   | { type: "SENSORS"; payload: { sensors: SensorData; meta: SensorMeta } }
   | { type: "ENCODERS"; payload: { encoders: EncoderData; meta: EncoderMeta } }
   | { type: "OBJECTS"; payload: DetectedObject[] }
-  | { type: "STATE"; payload: { state?: RobotState; mood?: Mood; mode?: RobotMode } }
+  | { type: "STATE"; payload: { state?: RobotState; mood?: Mood; mode?: RobotMode; aiNavigateEnabled?: boolean } }
+  | { type: "AI_NAVIGATE"; payload: { enabled: boolean } }
   | { type: "SYSTEM"; payload: SystemMetrics & { uptime?: number } }
   | { type: "LOG"; payload: LogEntry }
   | { type: "CAMERA"; payload: { base64: string; width: number; height: number } }
@@ -134,6 +135,18 @@ function reducer(state: WsState, action: WsAction): WsState {
           ...(action.payload.state && { state: action.payload.state }),
           ...(action.payload.mood && { mood: action.payload.mood }),
           ...(action.payload.mode && { mode: action.payload.mode }),
+          ...(action.payload.aiNavigateEnabled !== undefined && {
+            aiNavigateEnabled: action.payload.aiNavigateEnabled,
+          }),
+          lastSeen: new Date(),
+        },
+      };
+    case "AI_NAVIGATE":
+      return {
+        ...state,
+        robotStatus: {
+          ...state.robotStatus,
+          aiNavigateEnabled: action.payload.enabled,
           lastSeen: new Date(),
         },
       };
@@ -295,7 +308,18 @@ export function useWebSocket() {
       case "STATE":
         dispatch({
           type: "STATE",
-          payload: msg.payload as { state?: RobotState; mood?: Mood; mode?: RobotMode },
+          payload: msg.payload as {
+            state?: RobotState;
+            mood?: Mood;
+            mode?: RobotMode;
+            aiNavigateEnabled?: boolean;
+          },
+        });
+        break;
+      case "AI_NAVIGATE":
+        dispatch({
+          type: "AI_NAVIGATE",
+          payload: { enabled: Boolean(msg.payload.enabled) },
         });
         break;
       case "SYSTEM":

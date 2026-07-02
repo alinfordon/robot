@@ -8,6 +8,7 @@ export const COLLECTIONS = {
   events: "events",
   tasks: "tasks",
   memories: "memories",
+  settings: "settings",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
@@ -97,4 +98,11 @@ export interface MemoryDoc {
   tags?: string[];
   roomId?: string;
   peopleIds?: string[];
+}
+
+/** Persisted robot/dashboard preferences */
+export interface SettingsDoc {
+  _id: string;
+  aiNavigateEnabled: boolean;
+  updatedAt: Date;
 }

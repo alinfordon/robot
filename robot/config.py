@@ -187,6 +187,11 @@ MOTOR_CM_PER_SEC = _env_float("MOTOR_CM_PER_SEC", 20)
 MOTOR_DEG_PER_SEC = _env_float("MOTOR_DEG_PER_SEC", 120)
 MOTOR_MOVE_MAX_SEC = _env_float("MOTOR_MOVE_MAX_SEC", 10)
 
+# Navigare autonoma AI (continua, control din dashboard)
+AI_NAVIGATE_INTERVAL_SEC = _env_float("AI_NAVIGATE_INTERVAL_SEC", 4.0)
+AI_NAVIGATE_MOVE_MS = _env_int("AI_NAVIGATE_MOVE_MS", 1500)
+AI_NAVIGATE_URL = f"http://{PC_HOST}:{PC_HTTP_PORT}/api/ai-navigate"
+
 SYSTEM_PROMPT = """Ești Ody_V1 (ROBO_V1), robot fizic mobil cu roți, cameră, 4 senzori HC-SR04 și encodere viteză.
 Creator: Fordon Nicolae Alin, Ștei, Bihor — Webnode Consulting.
 Răspunzi în română, concis. Folosești datele senzorilor pentru decizii — nu inventezi distanțe."""
