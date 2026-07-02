@@ -215,12 +215,13 @@ export function pickBestDirection(ctx?: RobotContextPayload): "forward" | "left"
     return v;
   };
 
-  const candidates: { dir: "forward" | "left" | "right" | "backward"; cm: number }[] = [
+  const all: { dir: "forward" | "left" | "right" | "backward"; cm: number }[] = [
     { dir: "forward", cm: dist("front") },
     { dir: "left", cm: dist("left") },
     { dir: "right", cm: dist("right") },
     { dir: "backward", cm: dist("back") },
-  ].filter((c) => c.cm >= OBSTACLE_CM);
+  ];
+  const candidates = all.filter((c) => c.cm >= OBSTACLE_CM);
 
   if (!candidates.length) return null;
   candidates.sort((a, b) => b.cm - a.cm);
