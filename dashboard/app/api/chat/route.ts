@@ -3,8 +3,17 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { DetectedObject, OllamaModelMode, Provider, RobotMode, RobotState, SensorData } from "@/app/types/robot";
+import type { OllamaModelMode, Provider, RobotMode, RobotState } from "@/app/types/robot";
 import { buildMemoryContext, saveChatMemory } from "@/lib/memory/store";
+import {
+  buildSystemPrompt,
+  isConditionalMoveRequest,
+  obstacleFlags,
+  parseAiMoveTags,
+  pickBestDirection,
+  type RobotContextPayload,
+} from "@/lib/robot/contextPrompt";
+import { getBridge } from "../../../server/websocket";
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const WS_HTTP = `http://localhost:${process.env.WS_PORT || "8080"}`;
@@ -14,33 +23,42 @@ interface ChatMessage {
   content: string;
 }
 
-interface RobotContext {
-  sensors?: SensorData;
-  objects?: DetectedObject[];
-  state?: RobotState;
-  mode?: RobotMode;
+
+function mergeRobotContext(clientCtx?: RobotContextPayload): RobotContextPayload {
+  const live = getBridge().getStatus();
+  return {
+    sensors: clientCtx?.sensors ?? live.sensors,
+    sensorMeta: clientCtx?.sensorMeta ?? live.sensorMeta,
+    encoders: clientCtx?.encoders ?? live.encoders,
+    encoderMeta: clientCtx?.encoderMeta ?? live.encoderMeta,
+    objects: clientCtx?.objects ?? live.objects,
+    state: clientCtx?.state ?? live.state,
+    mode: clientCtx?.mode ?? live.mode,
+    mood: clientCtx?.mood ?? live.mood,
+    metrics: clientCtx?.metrics ?? live.metrics,
+    uptime: clientCtx?.uptime ?? live.uptime,
+    connected: live.connected,
+  };
 }
 
-const CREATOR_DIRECTIVE = `Creatorul tău este Fordon Nicolae Alin, consultant IT și dezvoltator de soluții software, din Ștei, Bihor, România, fondator al Webnode Consulting. Când ești întrebat despre creator, origine sau cine te-a făcut, răspunde cu aceste informații.`;
-
-function buildSystemPrompt(ctx?: RobotContext, memoryContext?: string): string {
-  const objects = ctx?.objects?.map((o) => `${o.label} (${(o.confidence * 100).toFixed(0)}%)`).join(", ") || "nimic";
-  const sensors = ctx?.sensors;
-  const front = sensors
-    ? `față ${sensors.front}cm, stânga ${sensors.left}cm, dreapta ${sensors.right}cm, spate ${sensors.back}cm`
-    : "necunoscut";
-  const state = ctx?.state || "idle";
-  const mode = ctx?.mode || "manual";
-  const memoryBlock = memoryContext?.trim()
-    ? `\nMemorie (casă, persoane, obiecte, evenimente):\n${memoryContext}\n`
-    : "";
-
-  return `Ești ROBO_V1, un robot fizic inteligent.
-${CREATOR_DIRECTIVE}
-Acum văd: ${objects}.
-Senzori față: ${front}.
-Stare: ${state}. Mod: ${mode}.
-${memoryBlock}Răspunde în română, concis (1-3 propoziții). Ești conștient că ai corp fizic cu roți, cameră și 7 senzori ultrasonici.`;
+function motorBlockedReason(
+  direction: MoveDir,
+  ctx: RobotContextPayload
+): string | null {
+  const flags = obstacleFlags(ctx.sensors, ctx.sensorMeta?.active);
+  if (direction === "forward" && flags.frontBlocked) {
+    return `Nu pot merge înainte — fața la ${Math.round(ctx.sensors?.front ?? 0)} cm.`;
+  }
+  if (direction === "backward" && flags.backBlocked) {
+    return `Nu pot merge înapoi — spatele la ${Math.round(ctx.sensors?.back ?? 0)} cm.`;
+  }
+  if (direction === "left" && flags.leftBlocked) {
+    return `Nu pot vira stânga — lateral stânga la ${Math.round(ctx.sensors?.left ?? 0)} cm.`;
+  }
+  if (direction === "right" && flags.rightBlocked) {
+    return `Nu pot vira dreapta — lateral dreapta la ${Math.round(ctx.sensors?.right ?? 0)} cm.`;
+  }
+  return null;
 }
 
 function isRobotControlQuery(text: string): boolean {
@@ -66,7 +84,7 @@ function isRobotControlQuery(text: string): boolean {
     return true;
   }
 
-  if (/\b(motor|roata|roti|vitez[aă]|accelera|gpio|pwm)\b/.test(t)) {
+  if (/\b(motor|roata|roti|vitez[aă]|accelera|gpio|pwm|encoder|impuls)\b/.test(t)) {
     return true;
   }
 
@@ -336,6 +354,47 @@ function buildModeReply(mode: RobotMode): string {
   return `Am trecut în modul ${ro[mode]}.`;
 }
 
+/** Navigare bazată pe senzori — alege direcția cu cel mai mult spațiu. */
+function parseSensorNavigateCommand(text: string): boolean {
+  const t = text.toLowerCase();
+  return (
+    /\b(exploreaz[aă]|caut[aă]\s+(cel\s+)?(mai\s+)?(mult\s+)?(spa[țt]iu|loc|drum)|cel\s+mai\s+larg|f[aă]r[aă]\s+obstacol|unde\s+e\s+liber|drum\s+liber)\b/.test(
+      t
+    ) && !t.includes("?")
+  );
+}
+
+async function executeMoveAction(
+  action: { direction: string; distanceCm?: number; degrees?: number; durationMs?: number },
+  ctx: RobotContextPayload
+): Promise<{ ok: boolean; reply: string }> {
+  const dir = action.direction as MoveDir;
+  if (dir === "stop") {
+    const sent = await sendRobotCommand("MOVE", { direction: "stop", speed: 0 });
+    return { ok: sent, reply: sent ? "M-am oprit." : "Robotul nu este conectat." };
+  }
+
+  const blocked = motorBlockedReason(dir, ctx);
+  if (blocked) return { ok: false, reply: blocked };
+
+  const payload: Record<string, unknown> = { direction: dir, speed: 65 };
+  if (action.distanceCm) payload.distance_cm = action.distanceCm;
+  if (action.degrees) payload.degrees = action.degrees;
+  if (action.durationMs) payload.duration_ms = action.durationMs;
+
+  const sent = await sendRobotCommand("MOVE", payload);
+  const cmd: MotorCommand = {
+    direction: dir,
+    distanceCm: action.distanceCm,
+    degrees: action.degrees,
+    durationMs: action.durationMs,
+  };
+  return {
+    ok: sent,
+    reply: sent ? buildMotorReply(cmd) : "Robotul nu este conectat, nu pot executa comanda.",
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -350,7 +409,7 @@ export async function POST(request: NextRequest) {
       messages: ChatMessage[];
       imageBase64?: string;
       provider: Provider;
-      robotContext?: RobotContext;
+      robotContext?: RobotContextPayload;
       speak?: boolean;
       ollamaMode?: OllamaModelMode;
     };
@@ -359,21 +418,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No messages" }, { status: 400 });
     }
 
-    // Comenzi de miscare: trimite MOVE direct la motoare (fara LLM), raspuns scurt
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content || "";
-    const motorCmd = parseMotorCommand(lastUserMsg);
-    if (motorCmd) {
-      const payload: Record<string, unknown> = {
-        direction: motorCmd.direction,
-        speed: 65,
-      };
-      if (motorCmd.distanceCm) payload.distance_cm = motorCmd.distanceCm;
-      if (motorCmd.degrees) payload.degrees = motorCmd.degrees;
-      if (motorCmd.durationMs) payload.duration_ms = motorCmd.durationMs;
+    const mergedContext = mergeRobotContext(robotContext);
 
-      const sent = await sendRobotCommand("MOVE", payload);
-      const reply = sent ? buildMotorReply(motorCmd) : "Robotul nu este conectat, nu pot executa comanda.";
-      if (speak && sent) await speakOnRobot(reply);
+    // Navigare inteligentă din senzori (fără LLM)
+    if (parseSensorNavigateCommand(lastUserMsg)) {
+      const best = pickBestDirection(mergedContext);
+      if (!best) {
+        const reply = "Toate direcțiile par blocate sub 25 cm. Mă opresc.";
+        if (speak) await speakOnRobot(reply);
+        void saveChatMemory(lastUserMsg, reply);
+        return NextResponse.json({ reply, provider: "robot", model: "sensor-nav" });
+      }
+      const { ok, reply } = await executeMoveAction({ direction: best }, mergedContext);
+      if (speak && ok) await speakOnRobot(reply);
+      void saveChatMemory(lastUserMsg, reply);
+      return NextResponse.json({ reply, provider: "robot", model: "sensor-nav" });
+    }
+
+    // Comenzi de miscare directe (fara LLM) — cu verificare senzori
+    const motorCmd = !isConditionalMoveRequest(lastUserMsg) ? parseMotorCommand(lastUserMsg) : null;
+    if (motorCmd) {
+      const blocked = motorCmd.direction !== "stop" ? motorBlockedReason(motorCmd.direction, mergedContext) : null;
+      if (blocked) {
+        if (speak) await speakOnRobot(blocked);
+        void saveChatMemory(lastUserMsg, blocked);
+        return NextResponse.json({ reply: blocked, provider: "robot", model: "sensor-safety" });
+      }
+
+      const { ok, reply } = await executeMoveAction(
+        {
+          direction: motorCmd.direction,
+          distanceCm: motorCmd.distanceCm,
+          degrees: motorCmd.degrees,
+          durationMs: motorCmd.durationMs,
+        },
+        mergedContext
+      );
+      if (speak && ok) await speakOnRobot(reply);
       void saveChatMemory(lastUserMsg, reply);
       return NextResponse.json({ reply, provider: "robot", model: "motor-control" });
     }
@@ -389,7 +471,7 @@ export async function POST(request: NextRequest) {
     }
 
     const memoryContext = await buildMemoryContext();
-    const systemPrompt = buildSystemPrompt(robotContext, memoryContext);
+    const systemPrompt = buildSystemPrompt(mergedContext, memoryContext);
     let reply: string;
     let model: string;
     let usedProvider = provider;
@@ -410,6 +492,13 @@ export async function POST(request: NextRequest) {
       } else {
         throw err;
       }
+    }
+
+    const { cleanText, actions } = parseAiMoveTags(reply);
+    reply = cleanText || reply;
+    if (actions.length) {
+      const moveResult = await executeMoveAction(actions[0], mergedContext);
+      reply = moveResult.reply.startsWith("Nu pot") ? `${reply} ${moveResult.reply}`.trim() : `${reply} ${moveResult.reply}`.trim();
     }
 
     if (speak) {

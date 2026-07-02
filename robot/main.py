@@ -13,6 +13,7 @@ try:
     from actuators.infrared import InfraredEmitter
     from actuators.motors import MotorController
     from actuators.speaker import Speaker
+    from brain.context import build_robot_context
     from brain.llm_client import ask
     from brain.router import VoiceRouter
     from brain.translator import Translator
@@ -55,6 +56,7 @@ class RoboV1:
         self.translator = Translator()
         self._chat_history: list = []
         self._running = True
+        self._last_metrics: dict | None = None
 
     async def start(self):
         logger.info("ROBO_V1 porneste...")
@@ -367,12 +369,13 @@ class RoboV1:
         self.ctx.set_state(RobotState.THINKING, Mood.THINKING)
         self._send_state()
 
-        robot_context = {
-            "sensors": self.proximity.get_readings(),
-            "objects": self.vision.last_objects if self.vision else [],
-            "state": self.ctx.state.value,
-            "mode": self.ctx.mode.value,
-        }
+        robot_context = build_robot_context(
+            self.proximity,
+            self.encoders,
+            self.vision,
+            self.ctx,
+            self._last_metrics,
+        )
 
         image_b64 = None
         if self.vision:
@@ -446,13 +449,17 @@ class RoboV1:
                     pass
 
                 if self.ws and self.ws.connected:
+                    metrics = {
+                        "cpu": cpu,
+                        "ram": ram,
+                        "temp": temp,
+                        "battery": 100.0,
+                    }
+                    self._last_metrics = metrics
                     self.ws.send(
                         "SYSTEM",
                         {
-                            "cpu": cpu,
-                            "ram": ram,
-                            "temp": temp,
-                            "battery": 100.0,
+                            **metrics,
                             "uptime": self.ctx.uptime(),
                         },
                     )
