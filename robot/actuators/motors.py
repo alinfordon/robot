@@ -69,40 +69,54 @@ class MotorController:
         with self._lock:
             self._left_speed = left
             self._right_speed = right
-            if HAS_GPIO:
-                if left >= 0:
-                    self._set_motor(
-                        config.MOTOR_LEFT_IN1,
-                        config.MOTOR_LEFT_IN2,
-                        self.pwm_left,
-                        left,
-                    )
-                else:
-                    self._set_motor(
-                        config.MOTOR_LEFT_IN2,
-                        config.MOTOR_LEFT_IN1,
-                        self.pwm_left,
-                        abs(left),
-                    )
-                if right >= 0:
-                    self._set_motor(
-                        config.MOTOR_RIGHT_IN3,
-                        config.MOTOR_RIGHT_IN4,
-                        self.pwm_right,
-                        right,
-                    )
-                else:
-                    self._set_motor(
-                        config.MOTOR_RIGHT_IN4,
-                        config.MOTOR_RIGHT_IN3,
-                        self.pwm_right,
-                        abs(right),
-                    )
+            if not HAS_GPIO or not self._initialized:
+                logger.debug("Mock motors: L=%s R=%s", left, right)
+                return
+            if left >= 0:
+                self._set_motor(
+                    config.MOTOR_LEFT_IN1,
+                    config.MOTOR_LEFT_IN2,
+                    self.pwm_left,
+                    left,
+                )
             else:
-                logger.debug(f"Mock motors: L={left} R={right}")
+                self._set_motor(
+                    config.MOTOR_LEFT_IN2,
+                    config.MOTOR_LEFT_IN1,
+                    self.pwm_left,
+                    abs(left),
+                )
+            if right >= 0:
+                self._set_motor(
+                    config.MOTOR_RIGHT_IN3,
+                    config.MOTOR_RIGHT_IN4,
+                    self.pwm_right,
+                    right,
+                )
+            else:
+                self._set_motor(
+                    config.MOTOR_RIGHT_IN4,
+                    config.MOTOR_RIGHT_IN3,
+                    self.pwm_right,
+                    abs(right),
+                )
 
     def stop(self):
         self.set_speed(0, 0)
+
+    def drive(self, direction: str, speed: float = None, *, manual: bool = False) -> bool:
+        """Miscare directa (fara rampa). In manual ocoleste verificarea obstacol."""
+        speed = speed or config.MOTOR_SPEED_DEFAULT
+        if direction == "stop":
+            self.stop()
+            return True
+        if not manual and not self._check_clear(direction):
+            logger.warning("Obstacol detectat - nu pot merge %s", direction)
+            self.stop()
+            return False
+        left, right = self._direction_to_speeds(direction, speed)
+        self.set_speed(left, right)
+        return True
 
     def smooth_move(self, direction: str, speed: float, duration: Optional[float] = None):
         if not self._check_clear(direction) and direction != "stop":

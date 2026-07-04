@@ -264,7 +264,15 @@ class RoboV1:
         elif msg_type == "SET_MODE":
             mode = payload.get("mode", "manual")
             try:
-                self.ctx.set_mode(RobotMode(mode))
+                new_mode = RobotMode(mode)
+                self.ctx.set_mode(new_mode)
+                if new_mode == RobotMode.MANUAL:
+                    if self.ctx.ai_navigate_enabled:
+                        self.ctx.set_ai_navigate(False)
+                        if self.ws:
+                            self.ws.send("AI_NAVIGATE", {"enabled": False, "source": "manual_mode"})
+                    await asyncio.to_thread(self.motors.stop)
+                    self.ctx.set_state(RobotState.IDLE, Mood.STANDBY)
             except ValueError:
                 pass
             self._send_state()
@@ -321,19 +329,15 @@ class RoboV1:
         await asyncio.to_thread(self._motor_move, "stop", 0)
 
     def _motor_move(self, direction: str, speed: float):
+        manual = self.ctx.mode == RobotMode.MANUAL
         if direction == "stop":
             self.motors.stop()
             self.ctx.set_state(RobotState.IDLE, Mood.STANDBY)
         else:
             self.ctx.set_state(RobotState.MOVING, Mood.HAPPY)
-            if direction == "forward":
-                self.motors.forward(speed)
-            elif direction == "backward":
-                self.motors.backward(speed)
-            elif direction == "left":
-                self.motors.turn_left(speed)
-            elif direction == "right":
-                self.motors.turn_right(speed)
+            ok = self.motors.drive(direction, speed, manual=manual)
+            if not ok:
+                self.ctx.set_state(RobotState.IDLE, Mood.ALERT)
         self._send_state()
 
     def _on_objects(self, objects: list):
@@ -515,7 +519,7 @@ class RoboV1:
         move_ms = getattr(config, "AI_NAVIGATE_MOVE_MS", 1500)
 
         while self._running:
-            if not self.ctx.ai_navigate_enabled:
+            if not self.ctx.ai_navigate_enabled or self.ctx.mode == RobotMode.MANUAL:
                 await asyncio.sleep(0.5)
                 continue
 

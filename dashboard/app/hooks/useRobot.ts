@@ -16,6 +16,14 @@ export function useRobot() {
 
   const setMode = (mode: RobotStatus["mode"]) => {
     ws.sendCommand("SET_MODE", { mode });
+    if (mode === "manual") {
+      ws.dispatch({ type: "AI_NAVIGATE", payload: { enabled: false } });
+      fetch("/api/settings/ai-navigate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: false }),
+      }).catch(() => {});
+    }
   };
 
   const setAiNavigate = async (enabled: boolean) => {
