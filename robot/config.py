@@ -31,14 +31,14 @@ MOCK_HARDWARE = os.getenv("MOCK_HARDWARE", "0") == "1"
 
 MODELS_ROOT = os.getenv("MODELS_ROOT", "/home/robot/models")
 
-# GPIO BCM numbering
-MOTOR_LEFT_IN1 = 17
-MOTOR_LEFT_IN2 = 27
-MOTOR_LEFT_ENA = 18
-MOTOR_RIGHT_IN3 = 22
-MOTOR_RIGHT_IN4 = 23
-MOTOR_RIGHT_ENB = 24
-MOTOR_PWM_FREQ = 1000
+# GPIO BCM numbering (suprascriere in .env daca firele difera)
+MOTOR_LEFT_IN1 = _env_int("MOTOR_LEFT_IN1", 17)
+MOTOR_LEFT_IN2 = _env_int("MOTOR_LEFT_IN2", 27)
+MOTOR_LEFT_ENA = _env_int("MOTOR_LEFT_ENA", 18)
+MOTOR_RIGHT_IN3 = _env_int("MOTOR_RIGHT_IN3", 22)
+MOTOR_RIGHT_IN4 = _env_int("MOTOR_RIGHT_IN4", 23)
+MOTOR_RIGHT_ENB = _env_int("MOTOR_RIGHT_ENB", 24)
+MOTOR_PWM_FREQ = _env_int("MOTOR_PWM_FREQ", 1000)
 
 ENCODER_LEFT = _env_int("ENCODER_LEFT", 20)
 ENCODER_RIGHT = _env_int("ENCODER_RIGHT", 16)
