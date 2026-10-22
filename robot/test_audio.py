@@ -18,6 +18,7 @@ from pathlib import Path
 
 import config
 from utils.audio_device import find_i2s_card_name, resolve_playback_device
+from utils.piper_bin import resolve_piper_bin
 
 
 def list_cards() -> None:
@@ -57,11 +58,22 @@ def tts_wav(text: str, out: Path) -> bool:
     if not model.exists():
         print(f"Model Piper lipsa: {model}")
         return False
+    piper = resolve_piper_bin()
+    if not Path(piper).exists() and piper == "piper":
+        print(
+            "Executabil Piper lipsa. Instaleaza in venv:\n"
+            "  source venv/bin/activate && pip install 'piper-tts>=1.2.0'\n"
+            "  # sau: bash setup/03_audio.sh"
+        )
+        return False
+    print(f"Piper: {piper}")
     proc = subprocess.run(
-        ["piper", "--model", str(model), "--output_file", str(out)],
+        [piper, "--model", str(model), "--output_file", str(out)],
         input=text.encode("utf-8"),
         check=False,
     )
+    if proc.returncode != 0:
+        print(f"Piper a esuat (exit {proc.returncode})")
     return proc.returncode == 0
 
 

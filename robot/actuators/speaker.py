@@ -6,6 +6,7 @@ from pathlib import Path
 import config
 from utils.audio_device import resolve_playback_device
 from utils.logger import get_logger
+from utils.piper_bin import resolve_piper_bin
 
 logger = get_logger("Speaker")
 
@@ -19,6 +20,7 @@ class Speaker:
             "ro": Path(config.PIPER_MODEL_PATH),
             "en": Path(config.PIPER_MODEL_PATH_EN),
         }
+        self._piper = resolve_piper_bin()
         self._device = resolve_playback_device(
             config.AUDIO_PLAYBACK_DEVICE,
             audio_output=getattr(config, "AUDIO_OUTPUT", "i2s"),
@@ -53,12 +55,20 @@ class Speaker:
             self._speaking = False
             return
 
+        if self._piper == "piper" or not Path(self._piper).exists():
+            logger.error(
+                "Piper lipsa (%s). Ruleaza: pip install 'piper-tts>=1.2.0' in venv",
+                self._piper,
+            )
+            self._speaking = False
+            return
+
         try:
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                 wav_path = f.name
 
             proc = await asyncio.create_subprocess_exec(
-                "piper",
+                self._piper,
                 "--model",
                 str(model_path),
                 "--output_file",
