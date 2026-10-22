@@ -16,6 +16,7 @@ import SpeedGauge from "@/app/components/SpeedGauge";
 import RobotMap from "@/app/components/RobotMap";
 import ChatArea from "@/app/components/ChatArea";
 import MotorControl from "@/app/components/MotorControl";
+import PanTiltPanel from "@/app/components/PanTiltPanel";
 import AiNavigatePanel from "@/app/components/AiNavigatePanel";
 import LogPanel from "@/app/components/LogPanel";
 import BilingualTranslator from "@/app/components/BilingualTranslator";
@@ -310,6 +311,12 @@ export default function DashboardClient() {
                   onMove={robot.move}
                   onSetMode={robot.setMode}
                 />
+                <PanTiltPanel
+                  pantilt={robot.robotStatus.pantilt}
+                  connected={robot.robotStatus.connected}
+                  onLook={robot.lookAt}
+                  onSet={robot.setPanTilt}
+                />
                 <AiNavigatePanel
                   enabled={robot.robotStatus.aiNavigateEnabled}
                   connected={robot.robotStatus.connected}
@@ -388,6 +395,12 @@ export default function DashboardClient() {
         {mobileTab === "control" && (
           <>
             <MotorControl mode={robot.robotStatus.mode} onMove={robot.move} onSetMode={robot.setMode} />
+            <PanTiltPanel
+              pantilt={robot.robotStatus.pantilt}
+              connected={robot.robotStatus.connected}
+              onLook={robot.lookAt}
+              onSet={robot.setPanTilt}
+            />
             <AiNavigatePanel
               enabled={robot.robotStatus.aiNavigateEnabled}
               connected={robot.robotStatus.connected}

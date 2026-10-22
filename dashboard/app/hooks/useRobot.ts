@@ -1,7 +1,7 @@
 "use client";
 
 import { useWebSocket } from "./useWebSocket";
-import { Provider, RobotStatus } from "@/app/types/robot";
+import { PanTiltDirection, Provider, RobotStatus } from "@/app/types/robot";
 
 export function useRobot() {
   const ws = useWebSocket();
@@ -34,6 +34,14 @@ export function useRobot() {
     ws.sendCommand("SET_SPEED", { left, right });
   };
 
+  const lookAt = (direction: PanTiltDirection, step?: number) => {
+    ws.sendCommand("PANTILT", step === undefined ? { direction } : { direction, step });
+  };
+
+  const setPanTilt = (pan: number, tilt: number) => {
+    ws.sendCommand("PANTILT", { pan, tilt });
+  };
+
   const sendIR = (code: string) => {
     ws.sendCommand("IR_SEND", { code });
   };
@@ -58,6 +66,8 @@ export function useRobot() {
     setMode,
     setAiNavigate,
     setSpeed,
+    lookAt,
+    setPanTilt,
     sendIR,
     reset,
     sendCommand: ws.sendCommand,

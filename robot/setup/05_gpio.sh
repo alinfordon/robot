@@ -63,9 +63,24 @@ enable_spi() {
   done
 }
 
+enable_i2c() {
+  # PCA9685 (pan & tilt) pe I2C1: SDA=GPIO2, SCL=GPIO3.
+  for CFG in /boot/firmware/config.txt /boot/config.txt; do
+    if [ -f "$CFG" ]; then
+      if ! grep -q "^dtparam=i2c_arm=on" "$CFG"; then
+        echo "Activez I2C in $CFG"
+        echo "dtparam=i2c_arm=on" | sudo tee -a "$CFG" > /dev/null
+        echo "I2C activat - reboot necesar, apoi verifica: i2cdetect -y 1"
+      fi
+      break
+    fi
+  done
+}
+
 install_pigpiod
 install_pigpiod_service
 sudo systemctl enable pigpiod
 sudo systemctl start pigpiod
 enable_spi
+enable_i2c
 echo "GPIO OK - verifica pinout in config.py"

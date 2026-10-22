@@ -13,6 +13,7 @@ pyaudio>=0.2.13
 piper-tts>=1.2.0
 gpiozero>=2.0
 pigpio>=1.78
+smbus2>=0.4.3
 psutil>=5.9.0
 colorlog>=6.7.0
 st7789>=0.0.4

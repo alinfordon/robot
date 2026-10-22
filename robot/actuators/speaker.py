@@ -10,7 +10,7 @@ logger = get_logger("Speaker")
 
 
 class Speaker:
-    """Piper TTS bilingv RO/EN pe USB Audio."""
+    """Piper TTS bilingv RO/EN pe MAX98357 (I2S) sau USB Audio."""
 
     def __init__(self):
         self._speaking = False

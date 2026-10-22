@@ -7,6 +7,7 @@ import {
   DetectedObject,
   LogEntry,
   Mood,
+  PanTiltState,
   RobotMode,
   RobotState,
   RobotStatus,
@@ -181,6 +182,12 @@ class RobotBridge {
       }
       case "DETECTED_OBJECTS":
         this.robotStatus.objects = (msg.payload.objects as DetectedObject[]) || [];
+        break;
+      case "PANTILT":
+        this.robotStatus.pantilt = {
+          ...this.robotStatus.pantilt,
+          ...(msg.payload as unknown as Partial<PanTiltState>),
+        };
         break;
       case "STATE":
         if (msg.payload.state) this.robotStatus.state = msg.payload.state as RobotState;

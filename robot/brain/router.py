@@ -20,6 +20,24 @@ _DIR_RO = {
     "right": "la dreapta",
 }
 
+# Pan&tilt: doar cand apare un verb de privire, altfel "stanga" ar roti robotul
+LOOK_TRIGGER = re.compile(r"\b(uita-te|uita te|uite|priveste|privesti|camera)\b")
+LOOK_PATTERNS = [
+    (r"\b(centru|centreaza|drept|inainte)\b", "center"),
+    (r"\b(sus|ridica)\b", "up"),
+    (r"\b(jos|coboara)\b", "down"),
+    (r"\b(stanga|left)\b", "left"),
+    (r"\b(dreapta|right)\b", "right"),
+]
+
+_LOOK_RO = {
+    "up": "in sus",
+    "down": "in jos",
+    "left": "la stanga",
+    "right": "la dreapta",
+    "center": "drept inainte",
+}
+
 
 def _parse_amount(text: str):
     """Extrage distanta (cm), unghi (grade) sau durata (ms) din text."""
@@ -45,15 +63,24 @@ class VoiceRouter:
         ai_handler: Callable,
         speaker_say: Callable,
         motor_timed: Optional[Callable[..., Awaitable[None]]] = None,
+        pantilt_look: Optional[Callable[[str], Awaitable[None]]] = None,
     ):
         self.motor_move = motor_move
         self.ai_handler = ai_handler
         self.speaker_say = speaker_say
         self.motor_timed = motor_timed
+        self.pantilt_look = pantilt_look
 
     async def route(self, text: str):
         text_lower = text.lower().strip()
         logger.info(f"Routez: {text_lower}")
+
+        if self.pantilt_look and LOOK_TRIGGER.search(text_lower):
+            for pattern, direction in LOOK_PATTERNS:
+                if re.search(pattern, text_lower):
+                    await self.pantilt_look(direction)
+                    await self.speaker_say(f"Ma uit {_LOOK_RO[direction]}.")
+                    return True
 
         for pattern, direction in MOVE_PATTERNS:
             if re.search(pattern, text_lower):

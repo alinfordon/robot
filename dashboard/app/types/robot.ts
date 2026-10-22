@@ -57,6 +57,25 @@ export interface SensorMeta {
   hardware: boolean;
 }
 
+export type PanTiltDirection = "left" | "right" | "up" | "down" | "center";
+
+export interface PanTiltLimits {
+  pan_min: number;
+  pan_max: number;
+  tilt_min: number;
+  tilt_max: number;
+}
+
+/** Cap pan&tilt (PCA9685). Limitele vin de la robot, din config.py. */
+export interface PanTiltState {
+  pan: number;
+  tilt: number;
+  hardware: boolean;
+  enabled: boolean;
+  step: number;
+  limits: PanTiltLimits;
+}
+
 export interface DetectedObject {
   label: string;
   confidence: number;
@@ -80,6 +99,7 @@ export interface RobotStatus {
   encoders: EncoderData;
   encoderMeta: EncoderMeta;
   objects: DetectedObject[];
+  pantilt: PanTiltState;
   metrics: SystemMetrics;
   lastSeen: Date | null;
   cameraFps: number;
@@ -140,6 +160,15 @@ export const DEFAULT_ENCODER_META: EncoderMeta = {
   ppr: 20,
 };
 
+export const DEFAULT_PANTILT: PanTiltState = {
+  pan: 90,
+  tilt: 90,
+  hardware: false,
+  enabled: false,
+  step: 10,
+  limits: { pan_min: 0, pan_max: 180, tilt_min: 0, tilt_max: 180 },
+};
+
 export const DEFAULT_METRICS: SystemMetrics = {
   cpu: 0,
   ram: 0,
@@ -157,6 +186,7 @@ export const DEFAULT_ROBOT_STATUS: RobotStatus = {
   encoders: DEFAULT_ENCODER_DATA,
   encoderMeta: DEFAULT_ENCODER_META,
   objects: [],
+  pantilt: DEFAULT_PANTILT,
   metrics: DEFAULT_METRICS,
   lastSeen: null,
   cameraFps: 0,

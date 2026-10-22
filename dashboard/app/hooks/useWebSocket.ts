@@ -2,6 +2,7 @@
 
 import { useReducer, useCallback, useEffect, useRef } from "react";
 import {
+  DEFAULT_PANTILT,
   DEFAULT_ROBOT_STATUS,
   DetectedObject,
   EncoderData,
@@ -9,6 +10,7 @@ import {
   LogEntry,
   Message,
   Mood,
+  PanTiltState,
   RobotMode,
   RobotState,
   RobotStatus,
@@ -21,6 +23,11 @@ import { parseSensorsPayload } from "@/lib/sensors/parse";
 import { parseEncodersPayload } from "@/lib/encoders/parse";
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
+
+const num = (value: unknown, fallback: number): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
 
 interface WsState {
   connected: boolean;
@@ -50,6 +57,7 @@ type WsAction =
   | { type: "SENSORS"; payload: { sensors: SensorData; meta: SensorMeta } }
   | { type: "ENCODERS"; payload: { encoders: EncoderData; meta: EncoderMeta } }
   | { type: "OBJECTS"; payload: DetectedObject[] }
+  | { type: "PANTILT"; payload: Partial<PanTiltState> }
   | { type: "STATE"; payload: { state?: RobotState; mood?: Mood; mode?: RobotMode; aiNavigateEnabled?: boolean } }
   | { type: "AI_NAVIGATE"; payload: { enabled: boolean } }
   | { type: "SYSTEM"; payload: SystemMetrics & { uptime?: number } }
@@ -124,6 +132,15 @@ function reducer(state: WsState, action: WsAction): WsState {
         robotStatus: {
           ...state.robotStatus,
           objects: action.payload,
+          lastSeen: new Date(),
+        },
+      };
+    case "PANTILT":
+      return {
+        ...state,
+        robotStatus: {
+          ...state.robotStatus,
+          pantilt: { ...state.robotStatus.pantilt, ...action.payload },
           lastSeen: new Date(),
         },
       };
@@ -305,6 +322,28 @@ export function useWebSocket() {
           payload: (msg.payload.objects as DetectedObject[]) || [],
         });
         break;
+      case "PANTILT": {
+        const p = msg.payload as Record<string, unknown>;
+        const limits = (p.limits as Record<string, unknown>) || {};
+        const fallback = DEFAULT_PANTILT;
+        dispatch({
+          type: "PANTILT",
+          payload: {
+            pan: num(p.pan, fallback.pan),
+            tilt: num(p.tilt, fallback.tilt),
+            hardware: Boolean(p.hardware),
+            enabled: Boolean(p.enabled),
+            step: num(p.step, fallback.step),
+            limits: {
+              pan_min: num(limits.pan_min, fallback.limits.pan_min),
+              pan_max: num(limits.pan_max, fallback.limits.pan_max),
+              tilt_min: num(limits.tilt_min, fallback.limits.tilt_min),
+              tilt_max: num(limits.tilt_max, fallback.limits.tilt_max),
+            },
+          },
+        });
+        break;
+      }
       case "STATE":
         dispatch({
           type: "STATE",

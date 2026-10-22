@@ -32,12 +32,23 @@ class MotorController:
         ]
         for pin in pins:
             setup_pin(pin, GPIO.OUT, initial=GPIO.LOW)
-        setup_pin(config.MOTOR_LEFT_ENA, GPIO.OUT, initial=GPIO.LOW)
-        setup_pin(config.MOTOR_RIGHT_ENB, GPIO.OUT, initial=GPIO.LOW)
-        self.pwm_left = GPIO.PWM(config.MOTOR_LEFT_ENA, config.MOTOR_PWM_FREQ)
-        self.pwm_right = GPIO.PWM(config.MOTOR_RIGHT_ENB, config.MOTOR_PWM_FREQ)
-        self.pwm_left.start(0)
-        self.pwm_right.start(0)
+
+        # ENA/ENB = -1 inseamna jumper pe L298N (viteza maxima, pin liber pt I2S etc.)
+        self.pwm_left = None
+        self.pwm_right = None
+        if config.MOTOR_LEFT_ENA >= 0:
+            setup_pin(config.MOTOR_LEFT_ENA, GPIO.OUT, initial=GPIO.LOW)
+            self.pwm_left = GPIO.PWM(config.MOTOR_LEFT_ENA, config.MOTOR_PWM_FREQ)
+            self.pwm_left.start(0)
+        else:
+            logger.info("ENA stanga: jumper (fara PWM GPIO) — necesar pentru MAX98357 I2S")
+        if config.MOTOR_RIGHT_ENB >= 0:
+            setup_pin(config.MOTOR_RIGHT_ENB, GPIO.OUT, initial=GPIO.LOW)
+            self.pwm_right = GPIO.PWM(config.MOTOR_RIGHT_ENB, config.MOTOR_PWM_FREQ)
+            self.pwm_right.start(0)
+        else:
+            logger.info("ENB dreapta: jumper (fara PWM GPIO)")
+
         self._initialized = True
         logger.info("Motoare initializate")
 
@@ -53,17 +64,21 @@ class MotorController:
             if HAS_GPIO:
                 GPIO.output(in1, GPIO.LOW)
                 GPIO.output(in2, GPIO.LOW)
-            pwm.ChangeDutyCycle(0) if HAS_GPIO else None
+            if pwm is not None and HAS_GPIO:
+                pwm.ChangeDutyCycle(0)
         elif speed > 0:
             if HAS_GPIO:
                 GPIO.output(in1, GPIO.HIGH)
                 GPIO.output(in2, GPIO.LOW)
-                pwm.ChangeDutyCycle(duty)
+                # Fara PWM (jumper): IN1/IN2 active = motor la viteza maxima
+                if pwm is not None:
+                    pwm.ChangeDutyCycle(duty)
         else:
             if HAS_GPIO:
                 GPIO.output(in1, GPIO.LOW)
                 GPIO.output(in2, GPIO.HIGH)
-                pwm.ChangeDutyCycle(abs(duty))
+                if pwm is not None:
+                    pwm.ChangeDutyCycle(abs(duty))
 
     def set_speed(self, left: float, right: float):
         with self._lock:
@@ -199,6 +214,8 @@ class MotorController:
     def cleanup(self):
         self.stop()
         if HAS_GPIO and self._initialized:
-            self.pwm_left.stop()
-            self.pwm_right.stop()
+            if self.pwm_left is not None:
+                self.pwm_left.stop()
+            if self.pwm_right is not None:
+                self.pwm_right.stop()
             self._initialized = False

@@ -12,6 +12,9 @@ class InfraredEmitter:
 
     def __init__(self):
         self._has_gpio = False
+        if not getattr(config, "IR_ENABLED", True):
+            logger.info("Emițător IR dezactivat (IR_ENABLED=0 — pin folosit de US/I2S)")
+            return
         if HAS_GPIO:
             try:
                 setup_pin(config.IR_PIN, GPIO.OUT, initial=GPIO.LOW)

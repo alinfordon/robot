@@ -12,6 +12,7 @@ try:
     from actuators.display import RobotDisplay
     from actuators.infrared import InfraredEmitter
     from actuators.motors import MotorController
+    from actuators.pantilt import PanTilt
     from actuators.speaker import Speaker
     from brain.context import build_robot_context
     from brain.llm_client import ask
@@ -42,6 +43,7 @@ class RoboV1:
         self.encoders = WheelEncoders(motor_sign=self.motors.wheel_signs)
         self.speaker = Speaker()
         self.infrared = InfraredEmitter()
+        self.pantilt = PanTilt()
         self.display: RobotDisplay | None = None
         try:
             if not config.MOCK_HARDWARE:
@@ -79,6 +81,7 @@ class RoboV1:
             ai_handler=self._ai_handler,
             speaker_say=self.speaker.say,
             motor_timed=self._timed_move,
+            pantilt_look=self._pantilt_look,
         )
 
         tasks = [
@@ -298,12 +301,26 @@ class RoboV1:
             right = float(payload.get("right", 0))
             await asyncio.to_thread(self.motors.set_speed, left, right)
 
+        elif msg_type == "PANTILT":
+            direction = payload.get("direction")
+            if direction:
+                state = await asyncio.to_thread(
+                    self.pantilt.look, direction, payload.get("step")
+                )
+            else:
+                state = await asyncio.to_thread(
+                    self.pantilt.set_angles, payload.get("pan"), payload.get("tilt")
+                )
+            if self.ws:
+                self.ws.send("PANTILT", state)
+
         elif msg_type == "IR_SEND":
             await self.infrared.send(payload.get("code", ""))
 
         elif msg_type == "RESET":
             self.ctx.reset()
             self.motors.stop()
+            await asyncio.to_thread(self.pantilt.center)
             self._send_state()
             await self.ws.send_async("LOG", {"level": "info", "message": "Reset complet", "module": "main"})
 
@@ -327,6 +344,12 @@ class RoboV1:
         await asyncio.to_thread(self._motor_move, direction, speed)
         await asyncio.sleep(secs)
         await asyncio.to_thread(self._motor_move, "stop", 0)
+
+    async def _pantilt_look(self, direction: str) -> dict:
+        state = await asyncio.to_thread(self.pantilt.look, direction)
+        if self.ws:
+            self.ws.send("PANTILT", state)
+        return state
 
     def _motor_move(self, direction: str, speed: float):
         manual = self.ctx.mode == RobotMode.MANUAL
@@ -486,6 +509,8 @@ class RoboV1:
                             "uptime": self.ctx.uptime(),
                         },
                     )
+                    # Repetat, ca un dashboard reconectat sa afle pozitia si limitele
+                    self.ws.send("PANTILT", self.pantilt.snapshot())
             except Exception as e:
                 logger.error(f"Monitor eroare: {e}")
 
@@ -579,6 +604,7 @@ class RoboV1:
         self.encoders.cleanup()
         self.motors.cleanup()
         self.infrared.cleanup()
+        self.pantilt.cleanup()
         if self.vision:
             self.vision.stop()
         if self.display:

@@ -18,6 +18,13 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_hex(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, hex(default)), 0)
+    except (TypeError, ValueError):
+        return default
+
+
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PC_HOST = os.getenv("PC_HOST", "192.168.0.216")
 PC_WS_PORT = _env_int("PC_WS_PORT", 8081)
@@ -32,9 +39,17 @@ MOCK_HARDWARE = os.getenv("MOCK_HARDWARE", "0") == "1"
 MODELS_ROOT = os.getenv("MODELS_ROOT", "/home/robot/models")
 
 # GPIO BCM numbering (suprascriere in .env daca firele difera)
+#
+# MAX98357 I2S (dtoverlay=max98357a) rezerva fix: BCLK=18, LRCLK=19, DIN=21.
+# Remapare fata de schema veche (USB audio):
+#   ENA stanga  -> jumper pe L298N (MOTOR_LEFT_ENA=-1), GPIO18 liber pentru BCLK
+#   US left ECHO  19 -> 12 (elibereaza LRCLK)
+#   US right ECHO 21 -> 16 (elibereaza DIN; encoder dreapta dezactivat)
+#   IR pe GPIO12  -> dezactivat (IR_ENABLED=0) cat timp ECHO stanga e pe 12
 MOTOR_LEFT_IN1 = _env_int("MOTOR_LEFT_IN1", 17)
 MOTOR_LEFT_IN2 = _env_int("MOTOR_LEFT_IN2", 27)
-MOTOR_LEFT_ENA = _env_int("MOTOR_LEFT_ENA", 18)
+# -1 = jumper pe ENA (fara PWM pe GPIO18) — necesar pentru MAX98357
+MOTOR_LEFT_ENA = _env_int("MOTOR_LEFT_ENA", -1)
 MOTOR_RIGHT_IN3 = _env_int("MOTOR_RIGHT_IN3", 22)
 MOTOR_RIGHT_IN4 = _env_int("MOTOR_RIGHT_IN4", 23)
 MOTOR_RIGHT_ENB = _env_int("MOTOR_RIGHT_ENB", 24)
@@ -45,30 +60,61 @@ ENCODER_RIGHT = _env_int("ENCODER_RIGHT", 16)
 
 # ─── HC-SR04 × 4 ─────────────────────────────────
 # Față centru
-US_FRONT_TRIG = 5
-US_FRONT_ECHO = 6       # * div 1kΩ+2kΩ
+US_FRONT_TRIG = _env_int("US_FRONT_TRIG", 5)
+US_FRONT_ECHO = _env_int("US_FRONT_ECHO", 6)  # * div 1kΩ+2kΩ
 
-# Lateral stânga
-US_LEFT_TRIG = 13
-US_LEFT_ECHO = 19       # * div 1kΩ+2kΩ
+# Lateral stânga (ECHO mutat pe 12 ca sa elibereze I2S LRCLK=19)
+US_LEFT_TRIG = _env_int("US_LEFT_TRIG", 13)
+US_LEFT_ECHO = _env_int("US_LEFT_ECHO", 12)
 
-# Lateral dreapta
-US_RIGHT_TRIG = 26
-US_RIGHT_ECHO = 21      # * div 1kΩ+2kΩ
+# Lateral dreapta (ECHO mutat pe 16 ca sa elibereze I2S DIN=21)
+US_RIGHT_TRIG = _env_int("US_RIGHT_TRIG", 26)
+US_RIGHT_ECHO = _env_int("US_RIGHT_ECHO", 16)
 
 # Spate centru
-US_BACK_TRIG = 4
-US_BACK_ECHO = 25       # * div 1kΩ+2kΩ
+US_BACK_TRIG = _env_int("US_BACK_TRIG", 4)
+US_BACK_ECHO = _env_int("US_BACK_ECHO", 25)
 
-# IR emitter (mutat de pe GPIO14 -> GPIO12: 14 e folosit de TFT_RST)
-IR_PIN = 12
+# IR emitter — conflict cu US_LEFT_ECHO pe 12 cand AUDIO_OUTPUT=i2s
+IR_ENABLED = os.getenv("IR_ENABLED", "0") == "1"
+IR_PIN = _env_int("IR_PIN", 12)
+
+# ─── PCA9685 -> pan & tilt camera ────────────────
+# Placa PWM I2C 16 canale pe I2C1: SDA->GPIO2(3), SCL->GPIO3(5), VCC->3.3V, GND->GND.
+# Servourile se alimenteaza separat pe V+ (5V/2A), masa comuna cu Pi.
+PANTILT_ENABLED = os.getenv("PANTILT_ENABLED", "1") == "1"
+PCA9685_I2C_BUS = _env_int("PCA9685_I2C_BUS", 1)
+# Adresa implicita 0x40 (fara punti A0-A5 lipite); verifica cu `i2cdetect -y 1`
+PCA9685_ADDRESS = _env_hex("PCA9685_ADDRESS", 0x40)
+PCA9685_PWM_FREQ = _env_int("PCA9685_PWM_FREQ", 50)  # servo analogic standard
+PANTILT_PAN_CHANNEL = _env_int("PANTILT_PAN_CHANNEL", 0)
+PANTILT_TILT_CHANNEL = _env_int("PANTILT_TILT_CHANNEL", 1)
+# Latime impuls (us) pentru 0 si 180 grade - calibrare per servo (SG90 tipic 500-2500)
+PANTILT_PULSE_MIN_US = _env_int("PANTILT_PULSE_MIN_US", 500)
+PANTILT_PULSE_MAX_US = _env_int("PANTILT_PULSE_MAX_US", 2500)
+# Limite mecanice: peste ele servo forteaza in sasiu
+PANTILT_PAN_MIN_DEG = _env_float("PANTILT_PAN_MIN_DEG", 10)
+PANTILT_PAN_MAX_DEG = _env_float("PANTILT_PAN_MAX_DEG", 170)
+PANTILT_TILT_MIN_DEG = _env_float("PANTILT_TILT_MIN_DEG", 45)
+PANTILT_TILT_MAX_DEG = _env_float("PANTILT_TILT_MAX_DEG", 135)
+# Pozitie de repaus (centrare la pornire si la comanda "center")
+PANTILT_PAN_CENTER_DEG = _env_float("PANTILT_PAN_CENTER_DEG", 90)
+PANTILT_TILT_CENTER_DEG = _env_float("PANTILT_TILT_CENTER_DEG", 90)
+# Inversare sens daca servo e montat oglindit
+PANTILT_PAN_INVERT = os.getenv("PANTILT_PAN_INVERT", "0") == "1"
+PANTILT_TILT_INVERT = os.getenv("PANTILT_TILT_INVERT", "0") == "1"
+# Pas pentru comenzi relative si viteza de baleiaj (miscare lina, nu salt)
+PANTILT_STEP_DEG = _env_float("PANTILT_STEP_DEG", 10)
+PANTILT_SPEED_DEG_PER_SEC = _env_float("PANTILT_SPEED_DEG_PER_SEC", 120)
+# Taie semnalul PWM dupa oprire: elimina zumzetul si incalzirea servo (0 = mereu activ)
+PANTILT_IDLE_RELEASE_SEC = _env_float("PANTILT_IDLE_RELEASE_SEC", 1.0)
 
 # Display TFT 2.8" ST7789V 240x320 (SPI0)
 # Schema fire -> RPi 5 (BCM):
 #   UCC->3.3V(1) rosu, GND->GND(6) negru,
 #   CS->GPIO8(24) galben, RESET->GPIO14(8) portocaliu, DC->GPIO7(26) verde,
 #   SDI/MOSI->GPIO10(19) albastru, SCK->GPIO11(23) violet,
-#   LED->GPIO15(22) alb, SDO/MISO->GPIO9(21) gri
+#   LED->GPIO15(10) alb, SDO/MISO->GPIO9(21) gri
 TFT_CS = 8
 TFT_DC = 7
 TFT_RST = 14
@@ -108,6 +154,8 @@ PIPER_MODEL_PATH_EN = os.getenv(
     "PIPER_MODEL_PATH_EN",
     os.path.join(MODELS_ROOT, "piper/en_US-lessac-medium.onnx"),
 )
+# Redare: i2s = MAX98357 (implicit), usb = dongle ALSA vechi
+AUDIO_OUTPUT = os.getenv("AUDIO_OUTPUT", "i2s").strip().lower()
 AUDIO_PLAYBACK_CARD = os.getenv("AUDIO_PLAYBACK_CARD", "0")
 AUDIO_PLAYBACK_DEVICE = os.getenv(
     "AUDIO_PLAYBACK_DEVICE", f"plughw:{AUDIO_PLAYBACK_CARD},0"
@@ -156,7 +204,8 @@ else:
 # Encodere viteza OKY3278 (photo interrupter, OUT digital per roata)
 # ENCODER_ACTIVE=left,right  |  ENCODER_PPR = gauri pe disc (ex. 20)
 ENCODER_ENABLED = os.getenv("ENCODER_ENABLED", "1") == "1"
-_enc_active_raw = os.getenv("ENCODER_ACTIVE", "left,right").strip().lower()
+# Implicit doar stanga: GPIO16 e reutilizat de US_RIGHT_ECHO (MAX98357 pe DIN=21)
+_enc_active_raw = os.getenv("ENCODER_ACTIVE", "left").strip().lower()
 if _enc_active_raw == "all":
     ENCODER_ACTIVE = frozenset({"left", "right"})
 elif _enc_active_raw in ("", "none"):
@@ -192,6 +241,6 @@ AI_NAVIGATE_INTERVAL_SEC = _env_float("AI_NAVIGATE_INTERVAL_SEC", 4.0)
 AI_NAVIGATE_MOVE_MS = _env_int("AI_NAVIGATE_MOVE_MS", 1500)
 AI_NAVIGATE_URL = f"http://{PC_HOST}:{PC_HTTP_PORT}/api/ai-navigate"
 
-SYSTEM_PROMPT = """Ești Ody_V1 (ROBO_V1), robot fizic mobil cu roți, cameră, 4 senzori HC-SR04 și encodere viteză.
+SYSTEM_PROMPT = """Ești Ody_V1 (ROBO_V1), robot fizic mobil cu roți, cameră pe cap pan&tilt, 4 senzori HC-SR04 și encodere viteză.
 Creator: Fordon Nicolae Alin, Ștei, Bihor — Webnode Consulting.
 Răspunzi în română, concis. Folosești datele senzorilor pentru decizii — nu inventezi distanțe."""
