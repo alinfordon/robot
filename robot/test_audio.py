@@ -17,6 +17,7 @@ import wave
 from pathlib import Path
 
 import config
+from utils.audio_device import find_i2s_card_name, resolve_playback_device
 
 
 def list_cards() -> None:
@@ -45,8 +46,7 @@ def tone_wav(path: Path, seconds: float = 1.5, freq: float = 440.0, rate: int = 
             w.writeframes(struct.pack("<h", sample))
 
 
-def play_file(path: Path) -> int:
-    device = config.AUDIO_PLAYBACK_DEVICE
+def play_file(path: Path, device: str) -> int:
     print(f"Redau pe {device}: {path}")
     r = subprocess.run(["aplay", "-q", "-D", device, str(path)], check=False)
     return r.returncode
@@ -70,8 +70,16 @@ def main() -> int:
     parser.add_argument("--tts", default="", help="Text TTS Piper (RO)")
     args = parser.parse_args()
 
+    device = resolve_playback_device(
+        config.AUDIO_PLAYBACK_DEVICE,
+        audio_output=getattr(config, "AUDIO_OUTPUT", "i2s"),
+        card_hint=getattr(config, "AUDIO_PLAYBACK_CARD", "MAX98357A"),
+    )
+    i2s_name = find_i2s_card_name()
     print(f"AUDIO_OUTPUT={getattr(config, 'AUDIO_OUTPUT', '?')}")
-    print(f"AUDIO_PLAYBACK_DEVICE={config.AUDIO_PLAYBACK_DEVICE}")
+    print(f"AUDIO_PLAYBACK_DEVICE (env)={config.AUDIO_PLAYBACK_DEVICE}")
+    print(f"AUDIO_PLAYBACK_DEVICE (resolved)={device}")
+    print(f"Card I2S detectat: {i2s_name or 'NICIUNUL'}")
     print(
         "Pin I2S asteptati: BCLK=GPIO18  LRC=GPIO19  DIN=GPIO21  "
         f"(MOTOR_LEFT_ENA={config.MOTOR_LEFT_ENA})"
@@ -79,18 +87,22 @@ def main() -> int:
     print()
     list_cards()
 
+    if getattr(config, "AUDIO_OUTPUT", "i2s") == "i2s" and not i2s_name:
+        print("EROARE: card MAX98357 nu apare in aplay -l. Reboot dupa dtoverlay?")
+        return 1
+
     with tempfile.TemporaryDirectory() as tmp:
         tone = Path(tmp) / "tone.wav"
         tone_wav(tone)
         print(">>> Ton 440 Hz ~1.5s (ar trebui auzit pe difuzor MAX98357)")
-        rc = play_file(tone)
+        rc = play_file(tone, device)
         if rc != 0:
             print(
                 "\nEROARE aplay. Verifica:\n"
                 "  1. dtoverlay=max98357a,no-sdmode in /boot/firmware/config.txt + reboot\n"
                 "  2. Cablaj BCLK/LRC/DIN pe 18/19/21\n"
                 "  3. JUMPER pe ENA (L298N) — GPIO18 nu trebuie folosit de motor\n"
-                "  4. aplay -l  (cauta card MAX98357 / hifiberry)\n"
+                f"  4. Test manual: aplay -D plughw:CARD={i2s_name or 'MAX98357A'},DEV=0 /usr/share/sounds/alsa/Front_Center.wav\n"
             )
             return rc
 
@@ -98,7 +110,7 @@ def main() -> int:
             speech = Path(tmp) / "tts.wav"
             print(f">>> TTS: {args.tts!r}")
             if tts_wav(args.tts.strip(), speech):
-                play_file(speech)
+                play_file(speech, device)
             else:
                 return 1
 

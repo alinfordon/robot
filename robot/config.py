@@ -155,11 +155,24 @@ PIPER_MODEL_PATH_EN = os.getenv(
     os.path.join(MODELS_ROOT, "piper/en_US-lessac-medium.onnx"),
 )
 # Redare: i2s = MAX98357 (implicit), usb = dongle ALSA vechi
+# Folosim CARD=NUME (nu index) — indexul se schimba dupa reboot (HDMI vs MAX98357).
 AUDIO_OUTPUT = os.getenv("AUDIO_OUTPUT", "i2s").strip().lower()
-AUDIO_PLAYBACK_CARD = os.getenv("AUDIO_PLAYBACK_CARD", "0")
-AUDIO_PLAYBACK_DEVICE = os.getenv(
-    "AUDIO_PLAYBACK_DEVICE", f"plughw:{AUDIO_PLAYBACK_CARD},0"
-)
+AUDIO_PLAYBACK_CARD = os.getenv("AUDIO_PLAYBACK_CARD", "MAX98357A")
+_raw_playback = os.getenv("AUDIO_PLAYBACK_DEVICE", "").strip()
+try:
+    from utils.audio_device import resolve_playback_device
+
+    AUDIO_PLAYBACK_DEVICE = resolve_playback_device(
+        _raw_playback or None,
+        audio_output=AUDIO_OUTPUT,
+        card_hint=AUDIO_PLAYBACK_CARD,
+    )
+except Exception:
+    AUDIO_PLAYBACK_DEVICE = _raw_playback or (
+        f"plughw:CARD={AUDIO_PLAYBACK_CARD},DEV=0"
+        if AUDIO_OUTPUT == "i2s"
+        else f"plughw:{AUDIO_PLAYBACK_CARD},0"
+    )
 
 
 def _parse_audio_device(value: str | None, fallback: str = "default") -> int | str:

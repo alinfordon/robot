@@ -102,30 +102,35 @@ find_usb_cards() {
   grep 'USB-Audio' /proc/asound/cards | awk '{print $1}'
 }
 
-find_i2s_card() {
+find_i2s_card_id() {
   # Dupa reboot, cardul apare ca MAX98357A / sndrpihifiberry / etc.
-  local id
-  id="$(grep -iE 'MAX98357|hifiberry|IQaudIO|snd_rpi' /proc/asound/cards | awk '{print $1; exit}')"
-  if [ -n "$id" ]; then
-    echo "$id"
-    return
-  fi
-  # Fallback: primul card care nu e HDMI
-  awk '/\[/{id=$1; name=tolower($0); if (name !~ /hdmi|vc4/) {print id; exit}}' /proc/asound/cards
+  grep -iE 'MAX98357|hifiberry|IQaudIO|snd_rpi' /proc/asound/cards | awk '{print $1; exit}'
+}
+
+find_i2s_card_name() {
+  # Extrage numele din [MAX98357A    ]
+  grep -iE 'MAX98357|hifiberry|IQaudIO|snd_rpi' /proc/asound/cards \
+    | sed -n 's/.*\[\([^]]*\)\].*/\1/p' | head -1 | tr -d ' '
 }
 
 if [ "$AUDIO_OUTPUT" = "i2s" ]; then
   enable_max98357_overlay
-  PLAYBACK_CARD="$(find_i2s_card)"
-  PLAYBACK_CARD="${PLAYBACK_CARD:-0}"
+  PLAYBACK_CARD_ID="$(find_i2s_card_id)"
+  PLAYBACK_CARD_NAME="$(find_i2s_card_name)"
+  PLAYBACK_CARD_NAME="${PLAYBACK_CARD_NAME:-MAX98357A}"
+  # Device string stabil (nu se strica cand HDMI ia alt index)
+  PLAYBACK_DEVICE="plughw:CARD=${PLAYBACK_CARD_NAME},DEV=0"
   CAPTURE_CARD="$(find_usb_cards | head -1)"
-  CAPTURE_CARD="${CAPTURE_CARD:-$PLAYBACK_CARD}"
+  if [ -z "$CAPTURE_CARD" ]; then
+    CAPTURE_CARD="${PLAYBACK_CARD_ID:-0}"
+  fi
 
-  cat > "$HOME/.asoundrc" <<EOF
+  if [ -n "$PLAYBACK_CARD_ID" ]; then
+    cat > "$HOME/.asoundrc" <<EOF
 # ROBO_V1 — MAX98357 I2S (redare) + microfon (USB sau default)
 pcm.i2s_out {
     type plug
-    slave.pcm "hw:${PLAYBACK_CARD},0"
+    slave.pcm "hw:${PLAYBACK_CARD_ID},0"
 }
 pcm.!default {
     type asym
@@ -137,13 +142,23 @@ pcm.!default {
 }
 ctl.!default {
     type hw
-    card ${PLAYBACK_CARD}
+    card ${PLAYBACK_CARD_ID}
 }
 EOF
+  else
+    echo "ATENTIE: card MAX98357 inca nu apare in /proc/asound/cards — reboot dupa overlay."
+    cat > "$HOME/.asoundrc" <<EOF
+# ROBO_V1 — MAX98357 (card inca nedetectat; dupa reboot ruleaza din nou 03_audio.sh)
+pcm.!default {
+    type plug
+    slave.pcm "plughw:CARD=MAX98357A,DEV=0"
+}
+EOF
+  fi
 
   ensure_env "AUDIO_OUTPUT" "i2s"
-  ensure_env "AUDIO_PLAYBACK_DEVICE" "plughw:${PLAYBACK_CARD},0"
-  ensure_env "AUDIO_PLAYBACK_CARD" "${PLAYBACK_CARD}"
+  ensure_env "AUDIO_PLAYBACK_DEVICE" "${PLAYBACK_DEVICE}"
+  ensure_env "AUDIO_PLAYBACK_CARD" "${PLAYBACK_CARD_NAME}"
   # Elibereaza GPIO18 (BCLK), 19 (LRCLK), 21 (DIN)
   ensure_env "MOTOR_LEFT_ENA" "-1"
   ensure_env "US_LEFT_ECHO" "12"
@@ -205,5 +220,9 @@ for f in "$PIPER_RO" "$PIPER_EN" "$VOSK_DIR/romanian" "$VOSK_DIR/en"; do
   [ -e "$f" ] && echo "  OK  $f" || echo "  LIPSA $f"
 done
 echo ""
-echo "AUDIO_OUTPUT=${AUDIO_OUTPUT} | Redare: plughw:${PLAYBACK_CARD},0"
+if [ "$AUDIO_OUTPUT" = "i2s" ]; then
+  echo "AUDIO_OUTPUT=i2s | Redare: ${PLAYBACK_DEVICE:-plughw:CARD=MAX98357A,DEV=0}"
+else
+  echo "AUDIO_OUTPUT=usb | Redare: plughw:${PLAYBACK_CARD},0"
+fi
 echo "Audio OK"

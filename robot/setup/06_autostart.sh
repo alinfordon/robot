@@ -1,12 +1,14 @@
 #!/bin/bash
 set -e
 PROJECT_DIR="${ROBOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-# Prefera MAX98357 / hifiberry; fallback USB, apoi 0
-ALSA_CARD="$(grep -iE 'MAX98357|hifiberry|IQaudIO|snd_rpi' /proc/asound/cards | awk '{print $1; exit}')"
-if [ -z "$ALSA_CARD" ]; then
-  ALSA_CARD="$(grep -m1 'USB-Audio' /proc/asound/cards | awk '{print $1}')"
+# Nume ALSA stabil (nu index — HDMI schimba ordinea cardurilor)
+ALSA_CARD_NAME="$(grep -iE 'MAX98357|hifiberry|IQaudIO|snd_rpi' /proc/asound/cards \
+  | sed -n 's/.*\[\([^]]*\)\].*/\1/p' | head -1 | tr -d ' ')"
+if [ -z "$ALSA_CARD_NAME" ]; then
+  ALSA_CARD_NAME="$(grep -m1 'USB-Audio' /proc/asound/cards \
+    | sed -n 's/.*\[\([^]]*\)\].*/\1/p' | head -1 | tr -d ' ')"
 fi
-ALSA_CARD="${ALSA_CARD:-0}"
+ALSA_CARD_NAME="${ALSA_CARD_NAME:-MAX98357A}"
 sudo tee /etc/systemd/system/robot.service > /dev/null <<EOF
 [Unit]
 Description=ROBO_V1 Robot Service
@@ -18,7 +20,7 @@ User=robot
 WorkingDirectory=${PROJECT_DIR}
 Environment=HOME=/home/robot
 Environment=PATH=${PROJECT_DIR}/venv/bin:/usr/bin
-Environment=ALSA_CARD=${ALSA_CARD}
+Environment=ALSA_CARD=${ALSA_CARD_NAME}
 ExecStart=${PROJECT_DIR}/venv/bin/python ${PROJECT_DIR}/main.py
 Restart=always
 RestartSec=5
