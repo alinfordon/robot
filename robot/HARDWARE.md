@@ -234,12 +234,28 @@ Amplificator mono I2S (fără I2C). Kernel: `dtoverlay=max98357a,no-sdmode` (ad�
 | BCLK | GPIO18 | 12 | **scoate** firul ENA de pe L298N; pune **jumper pe ENA** |
 | LRC / LRCLK | GPIO19 | 35 | mută ECHO HC-SR04 stânga pe GPIO12 |
 | DIN | GPIO21 | 40 | mută ECHO HC-SR04 dreapta pe GPIO16 |
-| GAIN | neconectat / conform modul | — | floating ≈ 9 dB pe multe plăci |
-| SD / SD_MODE | neconectat | — | `no-sdmode` ține DAC-ul activ |
+| GAIN | neconectat / conform modul | — | floating ≈ 9 dB; la GND ≈ 3 dB (mai încet) |
+| SD / SD_MODE | **3.3V sau VIN** | 1 sau 2 | **obligatoriu HIGH** — dacă plutește, amplificatorul e în shutdown (aplay „merge”, dar tăcere) |
 
-Difuzorul se leagă pe bornele **+ / −** ale modulului (nu pe Pi).
+Difuzorul se leagă pe bornele **+ / −** ale modulului (nu pe Pi). Impedanță tipică **4–8 Ω**.
 
-### 8.2 Activare software
+> `dtoverlay=...,no-sdmode` înseamnă doar că **driverul** nu controlează un GPIO SD.
+> Pinul fizic SD_MODE de pe placă tot trebuie legat la 3.3V/5V, altfel chip-ul rămâne stins.
+
+### 8.2 Dacă aplay reușește dar nu se aude nimic
+
+1. **SD_MODE → 3.3V** (cel mai frecvent).
+2. **VIN** pe 5V, **GND** comun cu Pi.
+3. Difuzor pe **OUT+/OUT−** (nu pe GPIO).
+4. BCLK/LRC/DIN pe 18/19/21 (nu inversate între ele).
+5. Jumper pe **ENA** L298N — GPIO18 liber (fără fir motor pe 18).
+6. `sudo systemctl stop robot` înainte de test (evită conflicte GPIO).
+7. Test forțat stereo:
+   ```bash
+   speaker-test -D plughw:CARD=MAX98357A,DEV=0 -c 2 -t sine -f 440
+   ```
+
+### 8.3 Activare software
 
 ```bash
 cd /home/robot/setup
