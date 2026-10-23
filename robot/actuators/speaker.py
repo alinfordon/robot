@@ -1,5 +1,5 @@
+import array
 import asyncio
-import audioop
 import os
 import tempfile
 import wave
@@ -18,7 +18,7 @@ class Speaker:
 
     def __init__(self):
         self._speaking = False
-        self._volume = int(getattr(config, "AUDIO_VOLUME_DEFAULT", 80))
+        self._volume = int(getattr(config, "AUDIO_VOLUME_DEFAULT", 40))
         self._volume = max(0, min(100, self._volume))
         self._models = {
             "ro": Path(config.PIPER_MODEL_PATH),
@@ -36,7 +36,11 @@ class Speaker:
                 config.AUDIO_PLAYBACK_DEVICE,
                 self._device,
             )
-        logger.info("Volum TTS initial: %s%%", self._volume)
+        logger.info(
+            "Volum TTS initial: %s%% (factor=%.3f)",
+            self._volume,
+            self._amplitude_factor(),
+        )
 
     @property
     def volume(self) -> int:
@@ -44,8 +48,26 @@ class Speaker:
 
     def set_volume(self, percent: float | int) -> int:
         self._volume = max(0, min(100, int(round(float(percent)))))
-        logger.info("Volum TTS: %s%%", self._volume)
+        logger.info(
+            "Volum TTS: %s%% (amplitudine=%.1f%%)",
+            self._volume,
+            self._amplitude_factor() * 100,
+        )
         return self._volume
+
+    def _amplitude_factor(self) -> float:
+        """Slider 0-100 -> amplitudine WAV.
+
+        MAX98357 e tare la gain hardware; curbă pătratică + plafon master
+        ca 50 pe slider să fie clar mai încet, nu doar -6 dB.
+        """
+        linear = self._volume / 100.0
+        if linear <= 0:
+            return 0.0
+        master = float(getattr(config, "AUDIO_VOLUME_MASTER", 0.40))
+        master = max(0.05, min(1.0, master))
+        # putere 2.2 ≈ mai agresiv spre volume mici
+        return (linear**2.2) * master
 
     def _resolve_model(self, lang: str) -> Path:
         lang = lang if lang in self._models else "ro"
@@ -56,35 +78,82 @@ class Speaker:
         return fallback
 
     def _apply_volume(self, wav_path: str) -> None:
-        """Scaleaza amplitudinea WAV (MAX98357 nu are mixer ALSA util)."""
-        factor = self._volume / 100.0
-        if abs(factor - 1.0) < 0.005:
-            return
+        """Scaleaza PCM int16/int8 (fara audioop — mai fiabil pe Pi)."""
+        factor = self._amplitude_factor()
         try:
             with wave.open(wav_path, "rb") as reader:
-                params = reader.getparams()
-                frames = reader.readframes(reader.getnframes())
-            if factor <= 0:
-                frames = b"\x00" * len(frames)
+                nch = reader.getnchannels()
+                sw = reader.getsampwidth()
+                rate = reader.getframerate()
+                nframes = reader.getnframes()
+                frames = reader.readframes(nframes)
+
+            if sw == 2:
+                samples = array.array("h")
+                samples.frombytes(frames)
+                if factor <= 0:
+                    for i in range(len(samples)):
+                        samples[i] = 0
+                elif abs(factor - 1.0) >= 0.001:
+                    for i in range(len(samples)):
+                        v = int(samples[i] * factor)
+                        if v > 32767:
+                            v = 32767
+                        elif v < -32768:
+                            v = -32768
+                        samples[i] = v
+                out = samples.tobytes()
+            elif sw == 1:
+                samples = array.array("B")
+                samples.frombytes(frames)
+                if factor <= 0:
+                    for i in range(len(samples)):
+                        samples[i] = 128
+                elif abs(factor - 1.0) >= 0.001:
+                    for i in range(len(samples)):
+                        centered = samples[i] - 128
+                        v = int(centered * factor) + 128
+                        samples[i] = max(0, min(255, v))
+                out = samples.tobytes()
             else:
-                frames = audioop.mul(frames, params.sampwidth, factor)
+                logger.warning("WAV sampwidth=%s neacceptat pentru volum — redare neschimbata", sw)
+                return
+
+            peak = 0
+            if sw == 2 and samples:
+                peak = max(abs(s) for s in samples[:: max(1, len(samples) // 2000)])
+            logger.info(
+                "Volum aplicat: slider=%s%% factor=%.3f peak~%s",
+                self._volume,
+                factor,
+                peak,
+            )
+
             with wave.open(wav_path, "wb") as writer:
-                writer.setparams(params)
-                writer.writeframes(frames)
+                writer.setnchannels(nch)
+                writer.setsampwidth(sw)
+                writer.setframerate(rate)
+                writer.writeframes(out)
         except Exception as exc:
             logger.warning("Nu am putut aplica volumul pe WAV: %s", exc)
 
     async def say(self, text: str, lang: str = "ro"):
         if not text.strip():
             return
-        if self._volume <= 0:
+        if self._volume <= 0 or self._amplitude_factor() <= 0:
             logger.info("Vorbesc (mut): [%s] %s...", lang, text[:40])
             self._speaking = False
             return
 
         self._speaking = True
         model_path = self._resolve_model(lang)
-        logger.info("Vorbesc [%s] vol=%s%%: %s...", lang, self._volume, text[:60])
+        logger.info(
+            "Vorbesc [%s] vol=%s%% amp=%.1f%%: %s...",
+            lang,
+            self._volume,
+            self._amplitude_factor() * 100,
+            text[:60],
+        )
 
         if config.MOCK_HARDWARE or not model_path.exists():
             logger.warning("TTS indisponibil (model lipsa: %s)", model_path)
@@ -117,7 +186,7 @@ class Speaker:
 
             if proc.returncode == 0:
                 await asyncio.to_thread(self._apply_volume, wav_path)
-                logger.info("Redare [%s] pe %s @ %s%%", lang, self._device, self._volume)
+                logger.info("Redare [%s] pe %s @ slider %s%%", lang, self._device, self._volume)
                 play = await asyncio.create_subprocess_exec(
                     "aplay",
                     "-q",

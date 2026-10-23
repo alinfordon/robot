@@ -6,9 +6,11 @@ interface VolumePanelProps {
   volume: number;
   connected?: boolean;
   onChange: (volume: number) => Promise<void>;
+  /** Trimite direct pe WS ca backup daca HTTP sync esueaza */
+  sendCommand?: (type: string, payload?: Record<string, unknown>) => boolean;
 }
 
-export default function VolumePanel({ volume, connected, onChange }: VolumePanelProps) {
+export default function VolumePanel({ volume, connected, onChange, sendCommand }: VolumePanelProps) {
   const safeVolume = Number.isFinite(volume) ? Math.max(0, Math.min(100, Math.round(volume))) : 80;
   const [local, setLocal] = useState(safeVolume);
   const [busy, setBusy] = useState(false);
@@ -23,6 +25,8 @@ export default function VolumePanel({ volume, connected, onChange }: VolumePanel
     async (next: number) => {
       setBusy(true);
       setError(null);
+      // Direct pe WebSocket — ajunge la robot chiar daca API-ul HTTP greseste portul
+      sendCommand?.("SET_VOLUME", { volume: next, source: "dashboard_ws" });
       try {
         const res = await fetch("/api/settings/volume", {
           method: "POST",
@@ -32,16 +36,17 @@ export default function VolumePanel({ volume, connected, onChange }: VolumePanel
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Eroare salvare volum");
         await onChange(Number(data.volume));
-        if (!data.synced) {
-          setError("Salvat, dar robotul nu e conectat.");
+        if (!data.synced && !connected) {
+          setError("Salvat local; robot offline — se aplica la reconectare.");
         }
       } catch (e) {
         setError(String(e));
+        await onChange(next);
       } finally {
         setBusy(false);
       }
     },
-    [onChange]
+    [onChange, sendCommand, connected]
   );
 
   const onSlide = (value: number) => {
@@ -65,7 +70,7 @@ export default function VolumePanel({ volume, connected, onChange }: VolumePanel
       </div>
 
       <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
-        Controlează TTS pe MAX98357 (0 = mut). Se salvează în MongoDB și se trimite la robot.
+        TTS pe MAX98357 — curbă agresivă (50 ≈ mult mai încet). 0 = mut. Încearcă 20–35 dacă e prea tare.
       </p>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

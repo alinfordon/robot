@@ -308,9 +308,10 @@ export default function DashboardClient() {
             {desktopTab === "control" && (
               <div className="control-tab">
                 <VolumePanel
-                  volume={robot.robotStatus.volume ?? 80}
+                  volume={robot.robotStatus.volume ?? 40}
                   connected={robot.robotStatus.connected}
                   onChange={robot.setVolume}
+                  sendCommand={robot.sendCommand}
                 />
                 <MotorControl
                   mode={robot.robotStatus.mode}
@@ -401,9 +402,10 @@ export default function DashboardClient() {
         {mobileTab === "control" && (
           <>
             <VolumePanel
-              volume={robot.robotStatus.volume ?? 80}
+              volume={robot.robotStatus.volume ?? 40}
               connected={robot.robotStatus.connected}
               onChange={robot.setVolume}
+              sendCommand={robot.sendCommand}
             />
             <MotorControl mode={robot.robotStatus.mode} onMove={robot.move} onSetMode={robot.setMode} />
             <PanTiltPanel

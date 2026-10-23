@@ -185,8 +185,10 @@ if _raw_input.lower() in ("auto", "usb", "camera", "default", ""):
 else:
     AUDIO_INPUT_DEVICE = _parse_audio_device(_raw_input, "auto")
 AUDIO_SAMPLERATE = _env_int("AUDIO_SAMPLERATE", 16000)
-# Volum TTS 0-100 (software gain pe WAV — MAX98357 nu are mixer util)
-AUDIO_VOLUME_DEFAULT = max(0, min(100, _env_int("AUDIO_VOLUME_DEFAULT", 80)))
+# Volum TTS 0-100 (slider). Amplitudine reala = (vol/100)^2.2 * AUDIO_VOLUME_MASTER
+AUDIO_VOLUME_DEFAULT = max(0, min(100, _env_int("AUDIO_VOLUME_DEFAULT", 40)))
+# Plafon hardware MAX98357 (0.35-0.50 recomandat; 1.0 = foarte tare)
+AUDIO_VOLUME_MASTER = _env_float("AUDIO_VOLUME_MASTER", 0.40)
 
 # Vision
 # remote = doar streaming cameră (YOLO pe PC); local = detectare pe Pi

@@ -28,7 +28,7 @@ export async function setAiNavigateEnabled(enabled: boolean): Promise<boolean> {
   return true;
 }
 
-function clampVolume(value: unknown, fallback = 80): number {
+function clampVolume(value: unknown, fallback = 40): number {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(0, Math.min(100, Math.round(n)));
@@ -36,14 +36,14 @@ function clampVolume(value: unknown, fallback = 80): number {
 
 export async function getVolume(): Promise<number> {
   const db = await getDb();
-  if (!db) return 80;
+  if (!db) return 40;
   const doc = await db.collection<SettingsDoc>(COLLECTIONS.settings).findOne({ _id: ROBOT_SETTINGS_ID });
-  return clampVolume(doc?.volume, 80);
+  return clampVolume(doc?.volume, 40);
 }
 
 export async function setVolume(volume: number): Promise<number> {
   const db = await getDb();
-  const level = clampVolume(volume, 80);
+  const level = clampVolume(volume, 40);
   if (!db) return level;
 
   await db.collection<SettingsDoc>(COLLECTIONS.settings).updateOne(
