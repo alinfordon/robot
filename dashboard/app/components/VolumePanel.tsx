@@ -9,14 +9,15 @@ interface VolumePanelProps {
 }
 
 export default function VolumePanel({ volume, connected, onChange }: VolumePanelProps) {
-  const [local, setLocal] = useState(volume);
+  const safeVolume = Number.isFinite(volume) ? Math.max(0, Math.min(100, Math.round(volume))) : 80;
+  const [local, setLocal] = useState(safeVolume);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setLocal(volume);
-  }, [volume]);
+    setLocal(safeVolume);
+  }, [safeVolume]);
 
   const persist = useCallback(
     async (next: number) => {
@@ -52,12 +53,12 @@ export default function VolumePanel({ volume, connected, onChange }: VolumePanel
   };
 
   return (
-    <div className="panel" style={{ marginTop: 8 }}>
+    <div className="panel" style={{ marginBottom: 12 }}>
       <div
         className="panel-title"
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}
       >
-        <span>Volum vorbire</span>
+        <span>Volum vorbire (TTS)</span>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.8rem" }}>
           {local}%{busy ? "…" : ""}
         </span>

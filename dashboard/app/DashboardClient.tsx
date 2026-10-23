@@ -307,6 +307,11 @@ export default function DashboardClient() {
 
             {desktopTab === "control" && (
               <div className="control-tab">
+                <VolumePanel
+                  volume={robot.robotStatus.volume ?? 80}
+                  connected={robot.robotStatus.connected}
+                  onChange={robot.setVolume}
+                />
                 <MotorControl
                   mode={robot.robotStatus.mode}
                   onMove={robot.move}
@@ -322,11 +327,6 @@ export default function DashboardClient() {
                   enabled={robot.robotStatus.aiNavigateEnabled}
                   connected={robot.robotStatus.connected}
                   onChange={robot.setAiNavigate}
-                />
-                <VolumePanel
-                  volume={robot.robotStatus.volume}
-                  connected={robot.robotStatus.connected}
-                  onChange={robot.setVolume}
                 />
                 <EncoderPanel
                   encoders={robot.robotStatus.encoders}
@@ -400,6 +400,11 @@ export default function DashboardClient() {
         {mobileTab === "chat" && chatPanel}
         {mobileTab === "control" && (
           <>
+            <VolumePanel
+              volume={robot.robotStatus.volume ?? 80}
+              connected={robot.robotStatus.connected}
+              onChange={robot.setVolume}
+            />
             <MotorControl mode={robot.robotStatus.mode} onMove={robot.move} onSetMode={robot.setMode} />
             <PanTiltPanel
               pantilt={robot.robotStatus.pantilt}
@@ -411,11 +416,6 @@ export default function DashboardClient() {
               enabled={robot.robotStatus.aiNavigateEnabled}
               connected={robot.robotStatus.connected}
               onChange={robot.setAiNavigate}
-            />
-            <VolumePanel
-              volume={robot.robotStatus.volume}
-              connected={robot.robotStatus.connected}
-              onChange={robot.setVolume}
             />
             <EncoderPanel
               encoders={robot.robotStatus.encoders}
