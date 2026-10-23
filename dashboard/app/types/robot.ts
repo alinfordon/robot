@@ -194,5 +194,5 @@ export const DEFAULT_ROBOT_STATUS: RobotStatus = {
   cameraFps: 0,
   uptime: 0,
   aiNavigateEnabled: false,
-  volume: 40,
+  volume: 80,
 };

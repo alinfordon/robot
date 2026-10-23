@@ -70,7 +70,7 @@ export default function VolumePanel({ volume, connected, onChange, sendCommand }
       </div>
 
       <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
-        TTS pe MAX98357 — curbă agresivă (50 ≈ mult mai încet). 0 = mut. Încearcă 20–35 dacă e prea tare.
+        Controlează TTS pe MAX98357 (0 = mut). Se salvează și se trimite la robot.
       </p>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

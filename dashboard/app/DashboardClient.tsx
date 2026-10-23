@@ -308,7 +308,7 @@ export default function DashboardClient() {
             {desktopTab === "control" && (
               <div className="control-tab">
                 <VolumePanel
-                  volume={robot.robotStatus.volume ?? 40}
+                  volume={robot.robotStatus.volume ?? 80}
                   connected={robot.robotStatus.connected}
                   onChange={robot.setVolume}
                   sendCommand={robot.sendCommand}
