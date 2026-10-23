@@ -402,7 +402,7 @@ export default function DashboardClient() {
         {mobileTab === "control" && (
           <>
             <VolumePanel
-              volume={robot.robotStatus.volume ?? 40}
+              volume={robot.robotStatus.volume ?? 80}
               connected={robot.robotStatus.connected}
               onChange={robot.setVolume}
               sendCommand={robot.sendCommand}
