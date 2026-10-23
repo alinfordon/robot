@@ -13,8 +13,6 @@ import {
   pickBestDirection,
   type RobotContextPayload,
 } from "@/lib/robot/contextPrompt";
-import { getBridge } from "../../../server/websocket";
-
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const WS_HTTP = `http://localhost:${process.env.WS_PORT || "8080"}`;
 
@@ -23,9 +21,19 @@ interface ChatMessage {
   content: string;
 }
 
+async function fetchLiveRobotStatus(): Promise<Partial<RobotContextPayload> & { connected?: boolean }> {
+  try {
+    const res = await fetch(`${WS_HTTP}/robot/status`, { cache: "no-store" });
+    if (!res.ok) return {};
+    return (await res.json()) as Partial<RobotContextPayload> & { connected?: boolean };
+  } catch {
+    return {};
+  }
+}
 
-function mergeRobotContext(clientCtx?: RobotContextPayload): RobotContextPayload {
-  const live = getBridge().getStatus();
+async function mergeRobotContext(clientCtx?: RobotContextPayload): Promise<RobotContextPayload> {
+  // Status-ul live vine de la procesul WS (tsx), nu dintr-un al doilea listener în Next.
+  const live = await fetchLiveRobotStatus();
   return {
     sensors: clientCtx?.sensors ?? live.sensors,
     sensorMeta: clientCtx?.sensorMeta ?? live.sensorMeta,
@@ -419,7 +427,7 @@ export async function POST(request: NextRequest) {
     }
 
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content || "";
-    const mergedContext = mergeRobotContext(robotContext);
+    const mergedContext = await mergeRobotContext(robotContext);
 
     // Navigare inteligentă din senzori (fără LLM)
     if (parseSensorNavigateCommand(lastUserMsg)) {

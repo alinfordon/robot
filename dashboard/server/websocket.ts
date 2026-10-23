@@ -32,9 +32,18 @@ interface TaggedClient {
   role: ClientRole;
 }
 
+/** true când rulează `tsx server/websocket.ts`; false când Next.js importă modulul (API routes). */
+function shouldListenAsServer(): boolean {
+  if (process.env.WS_LISTEN === "0") return false;
+  if (process.env.WS_LISTEN === "1") return true;
+  // Next App Router setează NEXT_RUNTIME=nodejs în rutele API
+  if (process.env.NEXT_RUNTIME) return false;
+  return true;
+}
+
 class RobotBridge {
-  private wss: WebSocketServer;
-  private httpServer: ReturnType<typeof createServer>;
+  private wss: WebSocketServer | null = null;
+  private httpServer: ReturnType<typeof createServer> | null = null;
   private clients: Map<WebSocket, ClientRole> = new Map();
   private robotClient: WebSocket | null = null;
   private robotStatus: RobotStatus = { ...DEFAULT_ROBOT_STATUS };
@@ -43,8 +52,15 @@ class RobotBridge {
   private frameTimestamps: number[] = [];
   private lastObservationAt = 0;
   private lastObservationKey = "";
+  private listening = false;
 
-  constructor() {
+  constructor(options?: { listen?: boolean }) {
+    const listen = options?.listen ?? shouldListenAsServer();
+    if (!listen) {
+      // Importat din Next.js — nu lega portul (procesul `tsx watch` ține deja 8081).
+      return;
+    }
+
     this.httpServer = createServer((req, res) => this.handleHttp(req, res));
     this.wss = new WebSocketServer({ server: this.httpServer });
 
@@ -106,7 +122,18 @@ class RobotBridge {
         this.robotStatus.aiNavigateEnabled = enabled;
       })
       .catch(() => {});
+
+    this.httpServer.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        console.error(
+          `[WS] Port ${WS_PORT} ocupat — oprește celălalt proces sau nu importa bridge-ul din Next.`
+        );
+        return;
+      }
+      console.error("[WS] Server error:", err);
+    });
     this.httpServer.listen(WS_PORT, () => {
+      this.listening = true;
       console.log(`[WS] Robot bridge on ws://localhost:${WS_PORT}`);
       console.log(`[HTTP] Status API on http://localhost:${WS_PORT}/robot/status`);
     });
