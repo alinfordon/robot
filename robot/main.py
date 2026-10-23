@@ -61,9 +61,12 @@ class RoboV1:
         self._running = True
         self._last_metrics: dict | None = None
         self._ai_navigate_busy = False
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def start(self):
         logger.info("ROBO_V1 porneste...")
+        # Salveaza loop-ul principal — Hearing ruleaza pe alt thread
+        self._loop = asyncio.get_running_loop()
         logger.info(
             "Hardware flags: MOTORS=%s US=%s ENC=%s IR=%s PANTILT=%s AUDIO=%s",
             "ON" if getattr(config, "MOTORS_ENABLED", True) else "OFF",
@@ -394,6 +397,8 @@ class RoboV1:
             self.ws.send("CAMERA_FRAME", {"base64": b64, "width": width, "height": height})
 
     def _on_speech(self, text: str, lang: str = "ro", route: str = "dashboard"):
+        """Callback din thread-ul Hearing — trebuie planificat pe loop-ul asyncio."""
+        logger.info("Vorbire primita [%s/%s]: %s", lang, route, text[:80])
         if self.ws:
             self.ws.send(
                 "SPEECH_RECOGNIZED",
@@ -402,13 +407,24 @@ class RoboV1:
         self.ctx.set_state(RobotState.LISTENING, Mood.LISTENING)
         self._send_state()
 
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self._process_speech(text, lang, route))
-        except RuntimeError:
-            pass
+        loop = self._loop
+        if loop is None or not loop.is_running():
+            logger.error("Fara event loop — comanda vocala ignorata: %s", text[:60])
+            return
+        fut = asyncio.run_coroutine_threadsafe(
+            self._process_speech(text, lang, route), loop
+        )
+
+        def _done(f: asyncio.Future) -> None:
+            try:
+                f.result()
+            except Exception as exc:
+                logger.error("Procesare vorbire esuata: %s", exc)
+
+        fut.add_done_callback(_done)
 
     async def _process_speech(self, text: str, lang: str = "ro", route: str = "dashboard"):
+        logger.info("Procesez vorbire [%s]: %s", route, text[:80])
         if self.translator.active or route == "translator":
             target = self.translator.output_lang(lang)
             translated = await self.translator.translate(text, lang, target)
@@ -432,6 +448,9 @@ class RoboV1:
 
         if self.router:
             await self.router.route(text)
+        else:
+            logger.warning("Router lipsa — trimit direct la AI")
+            await self._ai_handler(text)
 
     async def _ai_handler(self, text: str):
         self.ctx.set_state(RobotState.THINKING, Mood.THINKING)
