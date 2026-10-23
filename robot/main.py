@@ -62,6 +62,7 @@ class RoboV1:
         self._last_metrics: dict | None = None
         self._ai_navigate_busy = False
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._wake_until: float = 0.0  # timestamp: fereastra dupa «ODI»
 
     async def start(self):
         logger.info("ROBO_V1 porneste...")
@@ -396,13 +397,53 @@ class RoboV1:
         if self.ws and self.ws.connected:
             self.ws.send("CAMERA_FRAME", {"base64": b64, "width": width, "height": height})
 
+    def _wake_gate(self, text: str, route: str) -> tuple[bool, str]:
+        """Filtreaza pe wake word «ODI». Traducatorul nu cere wake."""
+        if not getattr(config, "WAKE_WORD_ENABLED", True):
+            return True, text.strip()
+        if route == "translator" or self.translator.active:
+            return True, text.strip()
+
+        from utils.wake_word import extract_command, wake_aliases
+
+        aliases = wake_aliases(
+            getattr(config, "WAKE_WORD", "odi"),
+            getattr(config, "WAKE_WORD_ALIASES", ""),
+        )
+        has_wake, cmd = extract_command(text, aliases)
+        now = time.time()
+        listen_sec = float(getattr(config, "WAKE_LISTEN_SEC", 8.0))
+
+        if has_wake:
+            self._wake_until = now + listen_sec
+            return True, cmd
+
+        if now <= self._wake_until:
+            # fereastra dupa «ODI» — accepta comanda fara sa repeți numele
+            self._wake_until = now + listen_sec
+            return True, text.strip()
+
+        return False, text.strip()
+
     def _on_speech(self, text: str, lang: str = "ro", route: str = "dashboard"):
         """Callback din thread-ul Hearing — trebuie planificat pe loop-ul asyncio."""
         logger.info("Vorbire primita [%s/%s]: %s", lang, route, text[:80])
+
+        ok, command = self._wake_gate(text, route)
+        if not ok:
+            logger.info("Ignorat (spune «%s» ca sa activezi): %s", config.WAKE_WORD, text[:60])
+            return
+
         if self.ws:
             self.ws.send(
                 "SPEECH_RECOGNIZED",
-                {"text": text, "lang": lang, "route": route},
+                {
+                    "text": command or text,
+                    "lang": lang,
+                    "route": route,
+                    "wake": True,
+                    "raw": text,
+                },
             )
         self.ctx.set_state(RobotState.LISTENING, Mood.LISTENING)
         self._send_state()
@@ -412,7 +453,7 @@ class RoboV1:
             logger.error("Fara event loop — comanda vocala ignorata: %s", text[:60])
             return
         fut = asyncio.run_coroutine_threadsafe(
-            self._process_speech(text, lang, route), loop
+            self._process_speech(command, lang, route, raw=text), loop
         )
 
         def _done(f: asyncio.Future) -> None:
@@ -423,8 +464,30 @@ class RoboV1:
 
         fut.add_done_callback(_done)
 
-    async def _process_speech(self, text: str, lang: str = "ro", route: str = "dashboard"):
-        logger.info("Procesez vorbire [%s]: %s", route, text[:80])
+    async def _process_speech(
+        self,
+        text: str,
+        lang: str = "ro",
+        route: str = "dashboard",
+        raw: str = "",
+    ):
+        # Doar wake word, fara comanda -> «Da?»
+        if (
+            getattr(config, "WAKE_WORD_ENABLED", True)
+            and route != "translator"
+            and not self.translator.active
+            and not (text or "").strip()
+        ):
+            ack = getattr(config, "WAKE_ACK", "Da?") or "Da?"
+            logger.info("Wake «%s» — astept comanda (%ss)", config.WAKE_WORD, config.WAKE_LISTEN_SEC)
+            self.ctx.set_state(RobotState.LISTENING, Mood.LISTENING)
+            self._send_state()
+            await self.speaker.say(ack, lang="ro")
+            self.ctx.set_state(RobotState.IDLE, Mood.STANDBY)
+            self._send_state()
+            return
+
+        logger.info("Procesez vorbire [%s]: %s", route, (text or raw)[:80])
         if self.translator.active or route == "translator":
             target = self.translator.output_lang(lang)
             translated = await self.translator.translate(text, lang, target)
