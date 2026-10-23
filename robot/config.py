@@ -191,14 +191,15 @@ AUDIO_VOLUME_DEFAULT = max(0, min(100, _env_int("AUDIO_VOLUME_DEFAULT", 80)))
 # Wake word — asculta mereu, dar proceseaza doar dupa «ODI»
 WAKE_WORD_ENABLED = os.getenv("WAKE_WORD_ENABLED", "1") == "1"
 WAKE_WORD = os.getenv("WAKE_WORD", "odi").strip().lower() or "odi"
-# Aliasuri Vosk (confuzii): ody, audi, ...
-WAKE_WORD_ALIASES = os.getenv(
-    "WAKE_WORD_ALIASES", "odi,ody,odie,audi,hody,oddy"
-)
-# Dupa wake, accepta urmatoarea fraza fara sa repeți numele (secunde)
+# Aliasuri stricte (fara audi/hody — false positive)
+WAKE_WORD_ALIASES = os.getenv("WAKE_WORD_ALIASES", "odi,ody,odie")
+# Dupa wake, o singura comanda fara nume (nu se prelungeste la fiecare fraza)
 WAKE_LISTEN_SEC = _env_float("WAKE_LISTEN_SEC", 8.0)
-# Raspuns scurt cand aude doar «ODI»
 WAKE_ACK = os.getenv("WAKE_ACK", "Da?")
+# Wake trebuie sa apara in primele N cuvinte
+WAKE_MAX_WORD_INDEX = _env_int("WAKE_MAX_WORD_INDEX", 3)
+# Follow-up fara ODI: max cuvinte (altfel e zgomot Vosk)
+WAKE_FOLLOWUP_MAX_WORDS = _env_int("WAKE_FOLLOWUP_MAX_WORDS", 12)
 
 # Vision
 # remote = doar streaming cameră (YOLO pe PC); local = detectare pe Pi

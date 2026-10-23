@@ -63,7 +63,8 @@ class RoboV1:
         self._last_metrics: dict | None = None
         self._ai_navigate_busy = False
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._wake_until: float = 0.0  # timestamp: fereastra dupa «ODI»
+        self._wake_until: float = 0.0  # fereastra scurta dupa «ODI»
+        self._voice_busy = False  # True in timpul AI/TTS — ignora microfonul
 
     async def start(self):
         logger.info("ROBO_V1 porneste...")
@@ -405,34 +406,44 @@ class RoboV1:
         if route == "translator" or self.translator.active:
             return True, text.strip()
 
-        from utils.wake_word import extract_command, wake_aliases
+        from utils.wake_word import extract_command, is_plausible_followup, wake_aliases
 
         aliases = wake_aliases(
             getattr(config, "WAKE_WORD", "odi"),
-            getattr(config, "WAKE_WORD_ALIASES", ""),
+            getattr(config, "WAKE_WORD_ALIASES", "odi,ody,odie"),
         )
-        has_wake, cmd = extract_command(text, aliases)
+        max_idx = int(getattr(config, "WAKE_MAX_WORD_INDEX", 3))
+        has_wake, cmd = extract_command(text, aliases, max_word_index=max_idx)
         now = time.time()
         listen_sec = float(getattr(config, "WAKE_LISTEN_SEC", 8.0))
 
         if has_wake:
             self._wake_until = now + listen_sec
+            logger.info("Wake «%s» detectat — comanda=%r", config.WAKE_WORD, cmd or "(ack)")
             return True, cmd
 
         if now <= self._wake_until:
-            # fereastra dupa «ODI» — accepta comanda fara sa repeți numele
-            self._wake_until = now + listen_sec
+            # O singura fereastra: NU prelungim la fiecare fraza (evita bucla infinita)
+            max_words = int(getattr(config, "WAKE_FOLLOWUP_MAX_WORDS", 12))
+            if not is_plausible_followup(text, max_words=max_words):
+                logger.info("Ignorat in fereastra wake (prea lung/gunoi): %s", text[:60])
+                return False, text.strip()
+            logger.info("Follow-up in fereastra wake: %s", text[:60])
             return True, text.strip()
 
         return False, text.strip()
 
     def _on_speech(self, text: str, lang: str = "ro", route: str = "dashboard"):
         """Callback din thread-ul Hearing — trebuie planificat pe loop-ul asyncio."""
+        if self._voice_busy or self.speaker.is_speaking:
+            logger.info("Ignorat (robot vorbeste/gandeste): %s", text[:50])
+            return
+
         logger.info("Vorbire primita [%s/%s]: %s", lang, route, text[:80])
 
         ok, command = self._wake_gate(text, route)
         if not ok:
-            logger.info("Ignorat (spune «%s» ca sa activezi): %s", config.WAKE_WORD, text[:60])
+            logger.info("Ignorat (spune «%s»): %s", config.WAKE_WORD, text[:60])
             return
 
         if self.ws:
@@ -453,11 +464,18 @@ class RoboV1:
         if loop is None or not loop.is_running():
             logger.error("Fara event loop — comanda vocala ignorata: %s", text[:60])
             return
+
+        # Un singur task vocal odata — inchide fereastra dupa acceptarea comenzii cu continut
+        if (command or "").strip():
+            self._wake_until = 0.0
+
+        self._voice_busy = True
         fut = asyncio.run_coroutine_threadsafe(
             self._process_speech(command, lang, route, raw=text), loop
         )
 
         def _done(f: asyncio.Future) -> None:
+            self._voice_busy = False
             try:
                 f.result()
             except Exception as exc:
@@ -472,7 +490,7 @@ class RoboV1:
         route: str = "dashboard",
         raw: str = "",
     ):
-        # Doar wake word, fara comanda -> «Da?»
+        # Doar wake word, fara comanda -> «Da?» (fereastra ramane deschisa)
         if (
             getattr(config, "WAKE_WORD_ENABLED", True)
             and route != "translator"
@@ -480,7 +498,11 @@ class RoboV1:
             and not (text or "").strip()
         ):
             ack = getattr(config, "WAKE_ACK", "Da?") or "Da?"
-            logger.info("Wake «%s» — astept comanda (%ss)", config.WAKE_WORD, config.WAKE_LISTEN_SEC)
+            logger.info(
+                "Wake «%s» — astept comanda (%ss)",
+                config.WAKE_WORD,
+                config.WAKE_LISTEN_SEC,
+            )
             self.ctx.set_state(RobotState.LISTENING, Mood.LISTENING)
             self._send_state()
             await self.speaker.say(ack, lang="ro")
@@ -489,32 +511,37 @@ class RoboV1:
             return
 
         logger.info("Procesez vorbire [%s]: %s", route, (text or raw)[:80])
-        if self.translator.active or route == "translator":
-            target = self.translator.output_lang(lang)
-            translated = await self.translator.translate(text, lang, target)
-            if self.ws:
-                self.ws.send(
-                    "TRANSLATION",
-                    {
-                        "original": text,
-                        "translation": translated,
-                        "sourceLang": lang,
-                        "targetLang": target,
-                        "spoken_on_robot": True,
-                    },
-                )
-            self.ctx.set_state(RobotState.SPEAKING, Mood.TALKING)
-            self._send_state()
-            await self.speaker.say(translated, lang=target)
-            self.ctx.set_state(RobotState.IDLE, Mood.STANDBY)
-            self._send_state()
-            return
+        try:
+            if self.translator.active or route == "translator":
+                target = self.translator.output_lang(lang)
+                translated = await self.translator.translate(text, lang, target)
+                if self.ws:
+                    self.ws.send(
+                        "TRANSLATION",
+                        {
+                            "original": text,
+                            "translation": translated,
+                            "sourceLang": lang,
+                            "targetLang": target,
+                            "spoken_on_robot": True,
+                        },
+                    )
+                self.ctx.set_state(RobotState.SPEAKING, Mood.TALKING)
+                self._send_state()
+                await self.speaker.say(translated, lang=target)
+                self.ctx.set_state(RobotState.IDLE, Mood.STANDBY)
+                self._send_state()
+                return
 
-        if self.router:
-            await self.router.route(text)
-        else:
-            logger.warning("Router lipsa — trimit direct la AI")
-            await self._ai_handler(text)
+            if self.router:
+                await self.router.route(text)
+            else:
+                logger.warning("Router lipsa — trimit direct la AI")
+                await self._ai_handler(text)
+        finally:
+            # Dupa comanda, trebuie din nou «ODI»
+            if route != "translator" and not self.translator.active:
+                self._wake_until = 0.0
 
     async def _ai_handler(self, text: str):
         self.ctx.set_state(RobotState.THINKING, Mood.THINKING)
