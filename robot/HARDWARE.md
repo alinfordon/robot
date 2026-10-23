@@ -29,51 +29,48 @@ reseta placa.
 
 ---
 
-## 2. Harta completă a pinilor
+## 2. Harta pinilor (faza curentă)
 
-După adăugarea magistralei I2C, **toți cei 26 de GPIO** de pe conectorul de 40 de pini
-sunt ocupați. Orice periferic nou trebuie legat fie pe cele 14 canale libere ale
-PCA9685, fie pe I2C cu altă adresă.
+**Momentan:** motoare, ultrasonici, encodere și IR sunt **dezactivate**
+(`MOTORS_ENABLED=0`, `US_ENABLED=0`, `ENCODER_ENABLED=0`, `IR_ENABLED=0`).
+Scoate firele L298N / HC-SR04 / encodere de pe GPIO ca să nu interfereze cu I2S.
+
+### 2.1 Activ acum
 
 | BCM | Pin fizic | Modul | Semnal |
 |---|---|---|---|
 | 2 | 3 | PCA9685 | SDA (I2C1) |
 | 3 | 5 | PCA9685 | SCL (I2C1) |
-| 4 | 7 | HC-SR04 spate | TRIG |
-| 5 | 29 | HC-SR04 față | TRIG |
-| 6 | 31 | HC-SR04 față | ECHO (prin divizor) |
 | 7 | 26 | Display ST7789V | DC |
 | 8 | 24 | Display ST7789V | CS (CE0) |
 | 9 | 21 | Display ST7789V | SDO / MISO |
 | 10 | 19 | Display ST7789V | SDI / MOSI |
 | 11 | 23 | Display ST7789V | SCK |
-| 12 | 32 | HC-SR04 stânga | ECHO (mutat; eliberează I2S LRCLK) |
-| 13 | 33 | HC-SR04 stânga | TRIG |
 | 14 | 8 | Display ST7789V | RESET |
 | 15 | 10 | Display ST7789V | LED (backlight) |
-| 16 | 36 | HC-SR04 dreapta | ECHO (mutat; eliberează I2S DIN) |
-| 17 | 11 | L298N | IN1 (motor stânga) |
-| 18 | 12 | MAX98357 | BCLK (I2S) — jumper pe ENA L298N |
+| 18 | 12 | MAX98357 | BCLK (I2S) |
 | 19 | 35 | MAX98357 | LRC / LRCLK (I2S) |
-| 20 | 38 | Encoder stânga | OUT |
 | 21 | 40 | MAX98357 | DIN (I2S) |
-| 22 | 15 | L298N | IN3 (motor dreapta) |
-| 23 | 16 | L298N | IN4 (motor dreapta) |
-| 24 | 18 | L298N | ENB (PWM dreapta) |
-| 25 | 22 | HC-SR04 spate | ECHO (prin divizor) |
-| 26 | 37 | HC-SR04 dreapta | TRIG |
-| 27 | 13 | L298N | IN2 (motor stânga) |
 
-Camera se leagă pe conectorul CSI (bandă flexibilă), nu pe GPIO.
+Camera pe CSI. Microfon (dacă există) pe USB.
 
-**Atenție la GPIO14/GPIO15**: sunt implicit UART0 (TXD/RXD). Aici sunt folosite de
-display, deci consola serială trebuie dezactivată (`raspi-config` → Interface Options →
-Serial Port → login shell: No).
+**Liberi (pentru mai târziu):** 4, 5, 6, 12, 13, 16, 17, 20, 22, 23, 24, 25, 26, 27.
 
-**MAX98357 vs pinii vechi**: I2S pe Pi e fix pe 18/19/21. Ca să le eliberăm:
-ENA stânga → **jumper pe L298N** (fără fir PWM pe GPIO18); ECHO US stânga → GPIO12;
-ECHO US dreapta → GPIO16; IR și encoder dreapta rămân dezactivate (`IR_ENABLED=0`,
-`ENCODER_ACTIVE=left`).
+### 2.2 Pini rezervati (cand reactivezi miscarea / senzorii)
+
+| BCM | Modul (istoric) |
+|---|---|
+| 17, 27, (18) | L298N stânga IN1/IN2/(ENA) |
+| 22, 23, 24 | L298N dreapta IN3/IN4/ENB |
+| 5/6, 13/19, 26/21, 4/25 | HC-SR04 față / stânga / dreapta / spate |
+| 20, 16 | Encodere stânga / dreapta |
+| 12 | IR (opțional) |
+
+Reactivezi în `.env`: `MOTORS_ENABLED=1`, `US_ENABLED=1`, `ENCODER_ENABLED=1`.
+Pentru I2S + motoare simultan: `MOTOR_LEFT_ENA=-1` (jumper pe ENA) ca GPIO18 să rămână BCLK.
+
+**Atenție la GPIO14/GPIO15**: sunt implicit UART0. Aici sunt ale displayului —
+dezactivează consola serială (`raspi-config` → Serial Port → login shell: No).
 
 ---
 

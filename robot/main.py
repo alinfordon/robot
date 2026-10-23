@@ -64,6 +64,15 @@ class RoboV1:
 
     async def start(self):
         logger.info("ROBO_V1 porneste...")
+        logger.info(
+            "Hardware flags: MOTORS=%s US=%s ENC=%s IR=%s PANTILT=%s AUDIO=%s",
+            "ON" if getattr(config, "MOTORS_ENABLED", True) else "OFF",
+            "ON" if config.US_ENABLED else "OFF",
+            "ON" if config.ENCODER_ENABLED else "OFF",
+            "ON" if getattr(config, "IR_ENABLED", False) else "OFF",
+            "ON" if config.PANTILT_ENABLED else "OFF",
+            getattr(config, "AUDIO_OUTPUT", "?"),
+        )
         self.proximity.start()
         self.encoders.start()
 

@@ -40,15 +40,13 @@ MODELS_ROOT = os.getenv("MODELS_ROOT", "/home/robot/models")
 
 # GPIO BCM numbering (suprascriere in .env daca firele difera)
 #
-# MAX98357 I2S (dtoverlay=max98357a) rezerva fix: BCLK=18, LRCLK=19, DIN=21.
-# Remapare fata de schema veche (USB audio):
-#   ENA stanga  -> jumper pe L298N (MOTOR_LEFT_ENA=-1), GPIO18 liber pentru BCLK
-#   US left ECHO  19 -> 12 (elibereaza LRCLK)
-#   US right ECHO 21 -> 16 (elibereaza DIN; encoder dreapta dezactivat)
-#   IR pe GPIO12  -> dezactivat (IR_ENABLED=0) cat timp ECHO stanga e pe 12
+# Faza curenta: MOTORS/US/ENCODER/IR dezactivate — pini liberi pentru MAX98357 I2S
+# (BCLK=18, LRCLK=19, DIN=21) + display SPI + PCA9685 I2C.
+# Reactivezi miscarea cu MOTORS_ENABLED=1 (si senzorii cu US_ENABLED / ENCODER_ENABLED).
+MOTORS_ENABLED = os.getenv("MOTORS_ENABLED", "0") == "1"
 MOTOR_LEFT_IN1 = _env_int("MOTOR_LEFT_IN1", 17)
 MOTOR_LEFT_IN2 = _env_int("MOTOR_LEFT_IN2", 27)
-# -1 = jumper pe ENA (fara PWM pe GPIO18) — necesar pentru MAX98357
+# -1 = jumper pe ENA (fara PWM pe GPIO18) — necesar daca I2S + motoare simultan
 MOTOR_LEFT_ENA = _env_int("MOTOR_LEFT_ENA", -1)
 MOTOR_RIGHT_IN3 = _env_int("MOTOR_RIGHT_IN3", 22)
 MOTOR_RIGHT_IN4 = _env_int("MOTOR_RIGHT_IN4", 23)
@@ -63,13 +61,11 @@ ENCODER_RIGHT = _env_int("ENCODER_RIGHT", 16)
 US_FRONT_TRIG = _env_int("US_FRONT_TRIG", 5)
 US_FRONT_ECHO = _env_int("US_FRONT_ECHO", 6)  # * div 1kΩ+2kΩ
 
-# Lateral stânga (ECHO mutat pe 12 ca sa elibereze I2S LRCLK=19)
+# Lateral stânga / dreapta (pini istorici; activi doar daca US_ENABLED=1)
 US_LEFT_TRIG = _env_int("US_LEFT_TRIG", 13)
-US_LEFT_ECHO = _env_int("US_LEFT_ECHO", 12)
-
-# Lateral dreapta (ECHO mutat pe 16 ca sa elibereze I2S DIN=21)
+US_LEFT_ECHO = _env_int("US_LEFT_ECHO", 19)
 US_RIGHT_TRIG = _env_int("US_RIGHT_TRIG", 26)
-US_RIGHT_ECHO = _env_int("US_RIGHT_ECHO", 16)
+US_RIGHT_ECHO = _env_int("US_RIGHT_ECHO", 21)
 
 # Spate centru
 US_BACK_TRIG = _env_int("US_BACK_TRIG", 4)
@@ -203,8 +199,9 @@ SENSOR_INTERVAL_SEC = _env_float("SENSOR_INTERVAL_SEC", 0.5)
 # US_ENABLED=0  -> dezactiveaza tot (fara thread-uri, fara busy-wait)
 # US_ACTIVE     -> lista virgula: front,left,right,back  sau "all"
 # Exemplu doar fata montata: US_ENABLED=1 si US_ACTIVE=front
-US_ENABLED = os.getenv("US_ENABLED", "1") == "1"
-_us_active_raw = os.getenv("US_ACTIVE", "").strip().lower()
+# Implicit OFF — eliberam GPIO pentru audio/display (reactivezi in .env)
+US_ENABLED = os.getenv("US_ENABLED", "0") == "1"
+_us_active_raw = os.getenv("US_ACTIVE", "none").strip().lower()
 if _us_active_raw == "all":
     US_ACTIVE = frozenset({"front", "left", "right", "back"})
 elif _us_active_raw in ("", "none"):
@@ -216,9 +213,8 @@ else:
 
 # Encodere viteza OKY3278 (photo interrupter, OUT digital per roata)
 # ENCODER_ACTIVE=left,right  |  ENCODER_PPR = gauri pe disc (ex. 20)
-ENCODER_ENABLED = os.getenv("ENCODER_ENABLED", "1") == "1"
-# Implicit doar stanga: GPIO16 e reutilizat de US_RIGHT_ECHO (MAX98357 pe DIN=21)
-_enc_active_raw = os.getenv("ENCODER_ACTIVE", "left").strip().lower()
+ENCODER_ENABLED = os.getenv("ENCODER_ENABLED", "0") == "1"
+_enc_active_raw = os.getenv("ENCODER_ACTIVE", "none").strip().lower()
 if _enc_active_raw == "all":
     ENCODER_ACTIVE = frozenset({"left", "right"})
 elif _enc_active_raw in ("", "none"):

@@ -16,6 +16,12 @@ class MotorController:
         self._right_speed = 0
         self._lock = threading.Lock()
         self._initialized = False
+        self.pwm_left = None
+        self.pwm_right = None
+
+        if not getattr(config, "MOTORS_ENABLED", True):
+            logger.info("Motoare dezactivate (MOTORS_ENABLED=0) — GPIO libere")
+            return
 
         if HAS_GPIO:
             try:
@@ -34,8 +40,6 @@ class MotorController:
             setup_pin(pin, GPIO.OUT, initial=GPIO.LOW)
 
         # ENA/ENB = -1 inseamna jumper pe L298N (viteza maxima, pin liber pt I2S etc.)
-        self.pwm_left = None
-        self.pwm_right = None
         if config.MOTOR_LEFT_ENA >= 0:
             setup_pin(config.MOTOR_LEFT_ENA, GPIO.OUT, initial=GPIO.LOW)
             self.pwm_left = GPIO.PWM(config.MOTOR_LEFT_ENA, config.MOTOR_PWM_FREQ)
@@ -84,6 +88,8 @@ class MotorController:
         with self._lock:
             self._left_speed = left
             self._right_speed = right
+            if not getattr(config, "MOTORS_ENABLED", True):
+                return
             if not HAS_GPIO or not self._initialized:
                 logger.debug("Mock motors: L=%s R=%s", left, right)
                 return
@@ -121,6 +127,10 @@ class MotorController:
 
     def drive(self, direction: str, speed: float = None, *, manual: bool = False) -> bool:
         """Miscare directa (fara rampa). In manual ocoleste verificarea obstacol."""
+        if not getattr(config, "MOTORS_ENABLED", True):
+            if direction != "stop":
+                logger.debug("MOVE ignorat (MOTORS_ENABLED=0): %s", direction)
+            return direction == "stop"
         speed = speed or config.MOTOR_SPEED_DEFAULT
         if direction == "stop":
             self.stop()
