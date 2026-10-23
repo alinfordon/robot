@@ -31,7 +31,7 @@ SpeechCallback = Callable[[str, str, str], None]
 
 
 class HearingSystem:
-    """Vosk STT bilingv RO/EN pentru dashboard si traducator."""
+    """Vosk STT bilingv RO/EN — microfon camera USB pe Pi."""
 
     def __init__(self, on_speech: Optional[SpeechCallback] = None):
         self.on_speech = on_speech
@@ -40,11 +40,14 @@ class HearingSystem:
         self._audio_queue: queue.Queue = queue.Queue()
         self._models: dict[str, Model] = {}
         self._recognizer: Optional[KaldiRecognizer] = None
+        # Implicit ON — dashboard poate dezactiva daca alege microfon PC
         self._enabled = True
         self._route = "dashboard"
         self._lang = "ro"
         self._lock = threading.Lock()
         self._resample_state = None
+        self._channels = 1
+        self._disabled_warned = False
 
     def set_config(
         self,
@@ -53,13 +56,20 @@ class HearingSystem:
         lang: str = "ro",
     ):
         with self._lock:
+            was = self._enabled
             self._enabled = enabled
             self._route = route
             lang = lang if lang in ("ro", "en") else "ro"
             if lang != self._lang:
                 self._lang = lang
                 self._recognizer = self._make_recognizer(lang)
+            if was and not enabled:
+                self._disabled_warned = False
         logger.info("STT config: enabled=%s route=%s lang=%s", enabled, route, lang)
+        if not enabled:
+            logger.warning(
+                "STT pe robot OPRIT din dashboard — alege Microfon: Raspberry Pi (Vosk)"
+            )
 
     def _load_models(self) -> bool:
         if not HAS_VOSK:
@@ -105,67 +115,75 @@ class HearingSystem:
     def stop(self):
         self._running = False
 
-    def _resolve_input_settings(self) -> tuple[int | str, int] | None:
+    def _try_open_settings(
+        self, device: int | str, rate: int, channels: int
+    ) -> tuple[int | str, int, int] | None:
+        try:
+            sd.check_input_settings(
+                device=device,
+                samplerate=rate,
+                channels=channels,
+                dtype="int16",
+            )
+            info = sd.query_devices(device, "input")
+            logger.info(
+                "Microfon OK: #%s %r @ %s Hz ch=%s",
+                device,
+                info.get("name"),
+                rate,
+                channels,
+            )
+            return device, rate, channels
+        except Exception as exc:
+            logger.debug(
+                "Microfon skip #%s rate=%s ch=%s: %s", device, rate, channels, exc
+            )
+            return None
+
+    def _resolve_input_settings(self) -> tuple[int | str, int, int] | None:
+        """Returneaza (device, rate, channels). Camerele USB sunt deseori stereo @ 48k."""
         from utils.audio_input import find_usb_mic_index, list_input_devices
 
         preferred = config.AUDIO_INPUT_DEVICE
         usb_idx = find_usb_mic_index(sd, preferred)
-        candidates: list[tuple[int | str, int]] = []
+
+        devices: list[int | str] = []
         if usb_idx is not None:
-            candidates.append((usb_idx, config.AUDIO_SAMPLERATE))
-        if preferred not in (None, "", "auto", "usb", "camera") and preferred != usb_idx:
-            candidates.append((preferred, config.AUDIO_SAMPLERATE))
-        candidates.append(("default", config.AUDIO_SAMPLERATE))
+            devices.append(usb_idx)
+        if (
+            preferred not in (None, "", "auto", "usb", "camera", "default")
+            and preferred not in devices
+        ):
+            devices.append(preferred)
+        for i, _name, _ch in list_input_devices(sd):
+            if i not in devices:
+                devices.append(i)
+        if "default" not in devices:
+            devices.append("default")
 
-        seen: set[str] = set()
-        unique: list[tuple[int | str, int]] = []
-        for device, rate in candidates:
-            key = f"{device}:{rate}"
-            if key in seen:
-                continue
-            seen.add(key)
-            unique.append((device, rate))
+        target = config.AUDIO_SAMPLERATE
+        rates_for = lambda native: list(
+            dict.fromkeys([target, native, 48000, 44100, 16000])
+        )
 
-        for device, rate in unique:
-            try:
-                sd.check_input_settings(
-                    device=device,
-                    samplerate=rate,
-                    channels=1,
-                    dtype="int16",
-                )
-                info = sd.query_devices(device, "input")
-                logger.info(
-                    "Microfon: #%s %r @ %s Hz (config AUDIO_INPUT_DEVICE=%r)",
-                    device,
-                    info.get("name"),
-                    rate,
-                    preferred,
-                )
-                return device, rate
-            except Exception:
-                continue
-
-        for device, _name, _ch in list_input_devices(sd):
+        for device in devices:
             try:
                 info = sd.query_devices(device, "input")
-                native = int(info["default_samplerate"])
-                sd.check_input_settings(
-                    device=device,
-                    samplerate=native,
-                    channels=1,
-                    dtype="int16",
-                )
-                logger.info(
-                    "Microfon native %s Hz pe #%s %r — resample la %s",
-                    native,
-                    device,
-                    info.get("name"),
-                    config.AUDIO_SAMPLERATE,
-                )
-                return device, native
+                native = int(info.get("default_samplerate") or target)
+                max_ch = int(info.get("max_input_channels") or 1)
             except Exception:
-                continue
+                native = target
+                max_ch = 2
+
+            channel_opts = [1]
+            if max_ch >= 2:
+                channel_opts.append(2)
+
+            for rate in rates_for(native):
+                for ch in channel_opts:
+                    got = self._try_open_settings(device, rate, ch)
+                    if got:
+                        return got
 
         logger.error("Niciun dispozitiv de intrare audio compatibil")
         try:
@@ -175,17 +193,22 @@ class HearingSystem:
             pass
         return None
 
-    def _to_vosk_pcm(self, data: bytes, capture_rate: int) -> bytes:
-        if capture_rate == config.AUDIO_SAMPLERATE:
-            return data
-        data, self._resample_state = audioop.ratecv(
-            data,
-            2,
-            1,
-            capture_rate,
-            config.AUDIO_SAMPLERATE,
-            self._resample_state,
-        )
+    def _to_vosk_pcm(self, data: bytes, capture_rate: int, channels: int) -> bytes:
+        # Downmix stereo -> mono pentru Vosk
+        if channels == 2:
+            data = audioop.tomono(data, 2, 0.5, 0.5)
+        elif channels > 2:
+            # ia primul canal
+            data = audioop.tomono(data, 2, 1.0, 0.0)
+        if capture_rate != config.AUDIO_SAMPLERATE:
+            data, self._resample_state = audioop.ratecv(
+                data,
+                2,
+                1,
+                capture_rate,
+                config.AUDIO_SAMPLERATE,
+                self._resample_state,
+            )
         return data
 
     def _listen_loop(self):
@@ -206,21 +229,37 @@ class HearingSystem:
                 if not settings:
                     time.sleep(5)
                     continue
-                device, capture_rate = settings
+                device, capture_rate, channels = settings
+                self._channels = channels
                 self._resample_state = None
                 logger.info(
-                    "Deschid microfon device=%s rate=%s", device, capture_rate
+                    "Deschid microfon device=%s rate=%s ch=%s",
+                    device,
+                    capture_rate,
+                    channels,
                 )
 
                 with sd.RawInputStream(
                     samplerate=capture_rate,
                     blocksize=max(4000, capture_rate // 4),
                     dtype="int16",
-                    channels=1,
+                    channels=channels,
                     device=device,
                     callback=callback,
                 ):
                     while self._running:
+                        with self._lock:
+                            enabled = self._enabled
+                        if not enabled:
+                            if not self._disabled_warned:
+                                logger.warning(
+                                    "Astept: STT disabled (microfon PC in dashboard). "
+                                    "Selecteaza «Raspberry Pi (Vosk)»."
+                                )
+                                self._disabled_warned = True
+                            time.sleep(0.5)
+                            continue
+
                         try:
                             data = self._audio_queue.get(timeout=1)
                         except queue.Empty:
@@ -234,7 +273,7 @@ class HearingSystem:
                             lang = self._lang
 
                         try:
-                            pcm = self._to_vosk_pcm(data, capture_rate)
+                            pcm = self._to_vosk_pcm(data, capture_rate, channels)
                             if recognizer.AcceptWaveform(pcm):
                                 result = json.loads(recognizer.Result())
                                 text = result.get("text", "").strip()

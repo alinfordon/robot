@@ -18,7 +18,8 @@ const STORAGE_KEY = "robo-v1-audio-settings";
 const DEFAULT_SETTINGS: AudioSettings = {
   pcTtsEnabled: false,
   robotTtsOnChat: true,
-  microphoneSource: "pc",
+  // Implicit microfonul de pe camera USB (Pi / Vosk)
+  microphoneSource: "robot",
 };
 
 function loadSettings(): AudioSettings {

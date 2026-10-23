@@ -77,7 +77,11 @@ export default function AudioSettings({
           disabled={!robotConnected}
           onChange={(v) => onChange({ microphoneSource: v })}
           label="Raspberry Pi (Vosk)"
-          hint={robotConnected ? "Vorbește lângă robot" : "Robot neconectat"}
+          hint={
+            robotConnected
+              ? "Microfon camera USB pe robot — obligatoriu pentru STT pe Pi"
+              : "Robot neconectat"
+          }
         />
       </div>
 
