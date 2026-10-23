@@ -106,13 +106,27 @@ class HearingSystem:
         self._running = False
 
     def _resolve_input_settings(self) -> tuple[int | str, int] | None:
-        preferred = config.AUDIO_INPUT_DEVICE
-        candidates: list[tuple[int | str, int]] = [
-            (preferred, config.AUDIO_SAMPLERATE),
-            ("default", config.AUDIO_SAMPLERATE),
-        ]
+        from utils.audio_input import find_usb_mic_index, list_input_devices
 
+        preferred = config.AUDIO_INPUT_DEVICE
+        usb_idx = find_usb_mic_index(sd, preferred)
+        candidates: list[tuple[int | str, int]] = []
+        if usb_idx is not None:
+            candidates.append((usb_idx, config.AUDIO_SAMPLERATE))
+        if preferred not in (None, "", "auto", "usb", "camera") and preferred != usb_idx:
+            candidates.append((preferred, config.AUDIO_SAMPLERATE))
+        candidates.append(("default", config.AUDIO_SAMPLERATE))
+
+        seen: set[str] = set()
+        unique: list[tuple[int | str, int]] = []
         for device, rate in candidates:
+            key = f"{device}:{rate}"
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append((device, rate))
+
+        for device, rate in unique:
             try:
                 sd.check_input_settings(
                     device=device,
@@ -120,19 +134,19 @@ class HearingSystem:
                     channels=1,
                     dtype="int16",
                 )
-                if device != preferred or rate != config.AUDIO_SAMPLERATE:
-                    logger.info(
-                        "Microfon: device=%s samplerate=%s (config: %s @ %s)",
-                        device,
-                        rate,
-                        preferred,
-                        config.AUDIO_SAMPLERATE,
-                    )
+                info = sd.query_devices(device, "input")
+                logger.info(
+                    "Microfon: #%s %r @ %s Hz (config AUDIO_INPUT_DEVICE=%r)",
+                    device,
+                    info.get("name"),
+                    rate,
+                    preferred,
+                )
                 return device, rate
             except Exception:
                 continue
 
-        for device in (preferred, "default"):
+        for device, _name, _ch in list_input_devices(sd):
             try:
                 info = sd.query_devices(device, "input")
                 native = int(info["default_samplerate"])
@@ -143,9 +157,10 @@ class HearingSystem:
                     dtype="int16",
                 )
                 logger.info(
-                    "Microfon native %s Hz pe device=%s — resample la %s",
+                    "Microfon native %s Hz pe #%s %r — resample la %s",
                     native,
                     device,
+                    info.get("name"),
                     config.AUDIO_SAMPLERATE,
                 )
                 return device, native
@@ -153,6 +168,11 @@ class HearingSystem:
                 continue
 
         logger.error("Niciun dispozitiv de intrare audio compatibil")
+        try:
+            for i, name, ch in list_input_devices(sd):
+                logger.error("  input candidate #%s ch=%s %r", i, ch, name)
+        except Exception:
+            pass
         return None
 
     def _to_vosk_pcm(self, data: bytes, capture_rate: int) -> bytes:

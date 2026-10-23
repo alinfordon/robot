@@ -176,10 +176,14 @@ def _parse_audio_device(value: str | None, fallback: str = "default") -> int | s
     return int(raw) if raw.isdigit() else raw
 
 
-AUDIO_INPUT_DEVICE = _parse_audio_device(
-    os.getenv("AUDIO_INPUT_DEVICE") or os.getenv("AUDIO_DEVICE_INDEX"),
-    "default",
-)
+# auto/usb/camera = microfon pe camera USB; altfel index PortAudio sau substring nume
+_raw_input = (
+    os.getenv("AUDIO_INPUT_DEVICE") or os.getenv("AUDIO_DEVICE_INDEX") or "auto"
+).strip()
+if _raw_input.lower() in ("auto", "usb", "camera", "default", ""):
+    AUDIO_INPUT_DEVICE: int | str = _raw_input.lower() or "auto"
+else:
+    AUDIO_INPUT_DEVICE = _parse_audio_device(_raw_input, "auto")
 AUDIO_SAMPLERATE = _env_int("AUDIO_SAMPLERATE", 16000)
 
 # Vision

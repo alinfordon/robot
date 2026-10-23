@@ -99,7 +99,24 @@ enable_max98357_overlay() {
 }
 
 find_usb_cards() {
-  grep 'USB-Audio' /proc/asound/cards | awk '{print $1}'
+  # Dongle USB-Audio clasic SAU microfon pe camera UVC
+  grep -iE 'USB-Audio|USB Audio|Camera|Webcam|UAC' /proc/asound/cards | awk '{print $1}'
+}
+
+find_usb_capture_card() {
+  # Preferă cardul din arecord -l (doar capture)
+  local id
+  id="$(arecord -l 2>/dev/null | grep -iE 'USB|Camera|Webcam|UAC' | head -1 | sed -n 's/^card \([0-9]*\):.*/\1/p')"
+  if [ -n "$id" ]; then
+    echo "$id"
+    return
+  fi
+  find_usb_cards | head -1
+}
+
+find_usb_capture_name() {
+  arecord -l 2>/dev/null | grep -iE 'USB|Camera|Webcam|UAC' | head -1 \
+    | sed -n 's/^card [0-9]*: \([^ ]*\).*/\1/p'
 }
 
 find_i2s_card_id() {
@@ -120,31 +137,49 @@ if [ "$AUDIO_OUTPUT" = "i2s" ]; then
   PLAYBACK_CARD_NAME="${PLAYBACK_CARD_NAME:-MAX98357A}"
   # Device string stabil (nu se strica cand HDMI ia alt index)
   PLAYBACK_DEVICE="plughw:CARD=${PLAYBACK_CARD_NAME},DEV=0"
-  CAPTURE_CARD="$(find_usb_cards | head -1)"
-  if [ -z "$CAPTURE_CARD" ]; then
-    CAPTURE_CARD="${PLAYBACK_CARD_ID:-0}"
-  fi
+  CAPTURE_CARD="$(find_usb_capture_card)"
+  CAPTURE_NAME="$(find_usb_capture_name)"
 
   if [ -n "$PLAYBACK_CARD_ID" ]; then
-    cat > "$HOME/.asoundrc" <<EOF
-# ROBO_V1 — MAX98357 I2S (redare) + microfon (USB sau default)
+    if [ -n "$CAPTURE_CARD" ]; then
+      cat > "$HOME/.asoundrc" <<EOF
+# ROBO_V1 — MAX98357 I2S (redare) + microfon camera USB (capture)
 pcm.i2s_out {
     type plug
     slave.pcm "hw:${PLAYBACK_CARD_ID},0"
 }
+pcm.usb_mic {
+    type plug
+    slave.pcm "hw:${CAPTURE_CARD},0"
+}
 pcm.!default {
     type asym
     playback.pcm "i2s_out"
-    capture.pcm {
-        type plug
-        slave.pcm "hw:${CAPTURE_CARD},0"
-    }
+    capture.pcm "usb_mic"
 }
 ctl.!default {
     type hw
     card ${PLAYBACK_CARD_ID}
 }
 EOF
+    else
+      cat > "$HOME/.asoundrc" <<EOF
+# ROBO_V1 — MAX98357 I2S (fara microfon USB detectat inca)
+pcm.i2s_out {
+    type plug
+    slave.pcm "hw:${PLAYBACK_CARD_ID},0"
+}
+pcm.!default {
+    type plug
+    slave.pcm "i2s_out"
+}
+ctl.!default {
+    type hw
+    card ${PLAYBACK_CARD_ID}
+}
+EOF
+      echo "ATENTIE: niciun capture USB in arecord -l — conecteaza camera cu microfon."
+    fi
   else
     echo "ATENTIE: card MAX98357 inca nu apare in /proc/asound/cards — reboot dupa overlay."
     cat > "$HOME/.asoundrc" <<EOF
@@ -176,13 +211,16 @@ EOF
   echo "  DIN     -> GPIO21 (pin fizic 40)"
   echo "  SD_MODE -> 3.3V sau VIN  (obligatoriu — altfel aplay OK dar tacere)"
   echo "  Scoate firele L298N / HC-SR04 / encodere de pe GPIO (MOTORS/US/ENCODER=0)"
+  if [ -n "$CAPTURE_CARD" ]; then
+    echo "=== Microfon camera USB ==="
+    echo "  Capture card=${CAPTURE_CARD} name=${CAPTURE_NAME:-?}"
+    echo "  Test: arecord -l && venv/bin/python test_mic.py"
+  fi
 else
   USB_CARDS=($(find_usb_cards))
   PLAYBACK_CARD="${USB_CARDS[0]:-0}"
-  CAPTURE_CARD="${USB_CARDS[1]:-$PLAYBACK_CARD}"
-  if [ "${#USB_CARDS[@]}" -eq 1 ]; then
-    CAPTURE_CARD="$PLAYBACK_CARD"
-  fi
+  CAPTURE_CARD="$(find_usb_capture_card)"
+  CAPTURE_CARD="${CAPTURE_CARD:-$PLAYBACK_CARD}"
 
   cat > "$HOME/.asoundrc" <<EOF
 # ROBO_V1 — USB Audio
@@ -209,8 +247,9 @@ EOF
   ensure_env "AUDIO_PLAYBACK_CARD" "${PLAYBACK_CARD}"
 fi
 
-ensure_env "AUDIO_DEVICE_INDEX" "0"
-ensure_env "AUDIO_INPUT_DEVICE" "default"
+# auto = alege microfonul de pe camera USB (sounddevice)
+ensure_env "AUDIO_INPUT_DEVICE" "auto"
+ensure_env "AUDIO_DEVICE_INDEX" "auto"
 ensure_env "VOSK_MODEL_PATH" "$VOSK_DIR/romanian"
 ensure_env "VOSK_MODEL_PATH_EN" "$VOSK_DIR/en"
 ensure_env "PIPER_MODEL_PATH" "$PIPER_RO"

@@ -52,7 +52,11 @@ Scoate firele L298N / HC-SR04 / encodere de pe GPIO ca să nu interfereze cu I2S
 | 19 | 35 | MAX98357 | LRC / LRCLK (I2S) |
 | 21 | 40 | MAX98357 | DIN (I2S) |
 
-Camera pe CSI. Microfon (dacă există) pe USB.
+**Camera USB** (video + microfon pe același cablu): STT folosește microfonul camerei
+(`AUDIO_INPUT_DEVICE=auto`). Redarea rămâne pe MAX98357 I2S. Verificare:
+`arecord -l` și `venv/bin/python test_mic.py`.
+
+Dacă ai și cameră CSI, setează `CAMERA_INDEX` în `.env` către device-ul dorit.
 
 **Liberi (pentru mai târziu):** 4, 5, 6, 12, 13, 16, 17, 20, 22, 23, 24, 25, 26, 27.
 
