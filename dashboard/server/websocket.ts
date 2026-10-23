@@ -16,7 +16,7 @@ import {
   WsMessage,
 } from "../app/types/robot";
 import { recordEvent, recordObservation, createTask, markTaskDone, markTaskSent, handleVisionEvents, shouldReactToPerson } from "../lib/memory/store";
-import { getAiNavigateEnabled } from "../lib/settings/store";
+import { getAiNavigateEnabled, getVolume } from "../lib/settings/store";
 import { parseSensorsPayload } from "../lib/sensors/parse";
 import { parseEncodersPayload } from "../lib/encoders/parse";
 import { getPeopleWithEncodings, handlePersonIdentification } from "../lib/people/store";
@@ -67,6 +67,17 @@ class RobotBridge {
             });
           })
           .catch((err) => console.warn("[Settings] AI navigate restore failed:", err));
+        void getVolume()
+          .then((volume) => {
+            this.robotStatus.volume = volume;
+            this.sendToRobot("SET_VOLUME", { volume, source: "db_restore" }, { skipTask: true });
+            this.broadcastToBrowsers({
+              type: "VOLUME",
+              payload: { volume },
+              timestamp: Date.now(),
+            });
+          })
+          .catch((err) => console.warn("[Settings] Volume restore failed:", err));
         this.broadcastToBrowsers({
           type: "ROBOT_CONNECTED",
           payload: {},
@@ -195,6 +206,14 @@ class RobotBridge {
         if (msg.payload.mode) this.robotStatus.mode = msg.payload.mode as RobotMode;
         if (msg.payload.aiNavigateEnabled !== undefined) {
           this.robotStatus.aiNavigateEnabled = Boolean(msg.payload.aiNavigateEnabled);
+        }
+        if (typeof msg.payload.volume === "number") {
+          this.robotStatus.volume = Math.max(0, Math.min(100, Math.round(msg.payload.volume as number)));
+        }
+        break;
+      case "VOLUME":
+        if (typeof msg.payload.volume === "number") {
+          this.robotStatus.volume = Math.max(0, Math.min(100, Math.round(msg.payload.volume as number)));
         }
         break;
       case "AI_NAVIGATE":

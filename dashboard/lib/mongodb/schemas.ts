@@ -104,5 +104,7 @@ export interface MemoryDoc {
 export interface SettingsDoc {
   _id: string;
   aiNavigateEnabled: boolean;
+  /** Volum TTS pe robot 0-100 */
+  volume?: number;
   updatedAt: Date;
 }

@@ -185,6 +185,8 @@ if _raw_input.lower() in ("auto", "usb", "camera", "default", ""):
 else:
     AUDIO_INPUT_DEVICE = _parse_audio_device(_raw_input, "auto")
 AUDIO_SAMPLERATE = _env_int("AUDIO_SAMPLERATE", 16000)
+# Volum TTS 0-100 (software gain pe WAV — MAX98357 nu are mixer util)
+AUDIO_VOLUME_DEFAULT = max(0, min(100, _env_int("AUDIO_VOLUME_DEFAULT", 80)))
 
 # Vision
 # remote = doar streaming cameră (YOLO pe PC); local = detectare pe Pi

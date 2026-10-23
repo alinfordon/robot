@@ -105,6 +105,8 @@ export interface RobotStatus {
   cameraFps: number;
   uptime: number;
   aiNavigateEnabled: boolean;
+  /** Volum TTS pe robot 0-100 */
+  volume: number;
 }
 
 export interface Message {
@@ -192,4 +194,5 @@ export const DEFAULT_ROBOT_STATUS: RobotStatus = {
   cameraFps: 0,
   uptime: 0,
   aiNavigateEnabled: false,
+  volume: 80,
 };

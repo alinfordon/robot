@@ -18,6 +18,7 @@ import ChatArea from "@/app/components/ChatArea";
 import MotorControl from "@/app/components/MotorControl";
 import PanTiltPanel from "@/app/components/PanTiltPanel";
 import AiNavigatePanel from "@/app/components/AiNavigatePanel";
+import VolumePanel from "@/app/components/VolumePanel";
 import LogPanel from "@/app/components/LogPanel";
 import BilingualTranslator from "@/app/components/BilingualTranslator";
 import { useSpeechRecognition } from "@/app/hooks/useSpeechRecognition";
@@ -322,6 +323,11 @@ export default function DashboardClient() {
                   connected={robot.robotStatus.connected}
                   onChange={robot.setAiNavigate}
                 />
+                <VolumePanel
+                  volume={robot.robotStatus.volume}
+                  connected={robot.robotStatus.connected}
+                  onChange={robot.setVolume}
+                />
                 <EncoderPanel
                   encoders={robot.robotStatus.encoders}
                   meta={robot.robotStatus.encoderMeta}
@@ -405,6 +411,11 @@ export default function DashboardClient() {
               enabled={robot.robotStatus.aiNavigateEnabled}
               connected={robot.robotStatus.connected}
               onChange={robot.setAiNavigate}
+            />
+            <VolumePanel
+              volume={robot.robotStatus.volume}
+              connected={robot.robotStatus.connected}
+              onChange={robot.setVolume}
             />
             <EncoderPanel
               encoders={robot.robotStatus.encoders}

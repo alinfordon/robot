@@ -230,6 +230,19 @@ class RoboV1:
             self.ctx.set_state(RobotState.IDLE, Mood.STANDBY)
             self._send_state()
 
+        elif msg_type == "SET_VOLUME":
+            try:
+                level = float(payload.get("volume", payload.get("level", self.speaker.volume)))
+            except (TypeError, ValueError):
+                level = self.speaker.volume
+            vol = self.speaker.set_volume(level)
+            if self.ws:
+                self.ws.send(
+                    "VOLUME",
+                    {"volume": vol, "source": payload.get("source", "dashboard")},
+                )
+            logger.info("SET_VOLUME -> %s%%", vol)
+
         elif msg_type == "SET_STT_CONFIG":
             if self.hearing:
                 self.hearing.set_config(
@@ -461,7 +474,9 @@ class RoboV1:
 
     def _send_state(self):
         if self.ws:
-            self.ws.send("STATE", self.ctx.to_dict())
+            payload = self.ctx.to_dict()
+            payload["volume"] = self.speaker.volume
+            self.ws.send("STATE", payload)
 
     async def _sensor_loop(self):
         while self._running:

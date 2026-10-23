@@ -30,6 +30,10 @@ export function useRobot() {
     ws.dispatch({ type: "AI_NAVIGATE", payload: { enabled } });
   };
 
+  const setVolume = async (volume: number) => {
+    ws.dispatch({ type: "VOLUME", payload: { volume } });
+  };
+
   const setSpeed = (left: number, right: number) => {
     ws.sendCommand("SET_SPEED", { left, right });
   };
@@ -65,6 +69,7 @@ export function useRobot() {
     speak,
     setMode,
     setAiNavigate,
+    setVolume,
     setSpeed,
     lookAt,
     setPanTilt,

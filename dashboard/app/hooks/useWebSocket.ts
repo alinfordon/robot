@@ -58,8 +58,18 @@ type WsAction =
   | { type: "ENCODERS"; payload: { encoders: EncoderData; meta: EncoderMeta } }
   | { type: "OBJECTS"; payload: DetectedObject[] }
   | { type: "PANTILT"; payload: Partial<PanTiltState> }
-  | { type: "STATE"; payload: { state?: RobotState; mood?: Mood; mode?: RobotMode; aiNavigateEnabled?: boolean } }
+  | {
+      type: "STATE";
+      payload: {
+        state?: RobotState;
+        mood?: Mood;
+        mode?: RobotMode;
+        aiNavigateEnabled?: boolean;
+        volume?: number;
+      };
+    }
   | { type: "AI_NAVIGATE"; payload: { enabled: boolean } }
+  | { type: "VOLUME"; payload: { volume: number } }
   | { type: "SYSTEM"; payload: SystemMetrics & { uptime?: number } }
   | { type: "LOG"; payload: LogEntry }
   | { type: "CAMERA"; payload: { base64: string; width: number; height: number } }
@@ -155,6 +165,9 @@ function reducer(state: WsState, action: WsAction): WsState {
           ...(action.payload.aiNavigateEnabled !== undefined && {
             aiNavigateEnabled: action.payload.aiNavigateEnabled,
           }),
+          ...(typeof action.payload.volume === "number" && {
+            volume: Math.max(0, Math.min(100, Math.round(action.payload.volume))),
+          }),
           lastSeen: new Date(),
         },
       };
@@ -164,6 +177,15 @@ function reducer(state: WsState, action: WsAction): WsState {
         robotStatus: {
           ...state.robotStatus,
           aiNavigateEnabled: action.payload.enabled,
+          lastSeen: new Date(),
+        },
+      };
+    case "VOLUME":
+      return {
+        ...state,
+        robotStatus: {
+          ...state.robotStatus,
+          volume: Math.max(0, Math.min(100, Math.round(action.payload.volume))),
           lastSeen: new Date(),
         },
       };
@@ -352,6 +374,7 @@ export function useWebSocket() {
             mood?: Mood;
             mode?: RobotMode;
             aiNavigateEnabled?: boolean;
+            volume?: number;
           },
         });
         break;
@@ -361,6 +384,13 @@ export function useWebSocket() {
           payload: { enabled: Boolean(msg.payload.enabled) },
         });
         break;
+      case "VOLUME": {
+        const vol = Number(msg.payload?.volume);
+        if (Number.isFinite(vol)) {
+          dispatch({ type: "VOLUME", payload: { volume: vol } });
+        }
+        break;
+      }
       case "SYSTEM":
         dispatch({
           type: "SYSTEM",
